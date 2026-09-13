@@ -24,8 +24,13 @@ export const editorTheme = EditorView.theme({
     // The band across the caret's line fights with rendered prose; the caret
     // itself says where you are.
     '.cm-activeLine': { backgroundColor: 'transparent' },
-    '.cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection': {
+    // Both halves matter: the background alone left syntax-highlighted code and
+    // dimmed markup at their own colors inside the selection, which is half of
+    // why it read as muddy. An explicit foreground guarantees the contrast
+    // whatever the token underneath was painted.
+    '.cm-content ::selection, .cm-content::selection, .cm-line::selection': {
         backgroundColor: 'var(--selection)',
+        color: 'var(--selection-text)',
     },
     '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)', borderLeftWidth: '2px' },
     '.cm-placeholder': { color: 'var(--text-dim)' },

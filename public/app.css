@@ -22,7 +22,10 @@
     --row-current: rgba(37, 99, 235, 0.10);
     --tree-guide: rgba(0, 0, 0, 0.09);
     --tree-icon: #98a2b3;
-    --selection: rgba(37, 99, 235, 0.22);
+    /* Opaque on purpose: a translucent tint over a code chip or a mention
+       highlight is a different color on every background it crosses. */
+    --selection: #b6d4fe;
+    --selection-text: #0b1220;
 
     --syn-comment: #6b7280;
     --syn-keyword: #b45309;
@@ -54,7 +57,8 @@
         --row-current: rgba(110, 168, 254, 0.14);
         --tree-guide: rgba(255, 255, 255, 0.10);
         --tree-icon: #6b7688;
-        --selection: rgba(110, 168, 254, 0.28);
+        --selection: #2c5fa8;
+        --selection-text: #f4f7fb;
 
         --syn-comment: #7a8494;
         --syn-keyword: #fb9936;
@@ -709,4 +713,12 @@ dialog.ask input:focus {
 
 body.panel-open #main {
     margin-right: 340px;
+}
+
+
+/* The same selection everywhere, so the sidebar and the panels do not each
+   invent their own. */
+::selection {
+    background: var(--selection);
+    color: var(--selection-text);
 }

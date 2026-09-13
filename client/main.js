@@ -5,7 +5,11 @@
 // the server has not confirmed: a failed save leaves the buffer dirty and says
 // so, rather than pretending.
 import { Annotation, EditorState } from '@codemirror/state';
-import { EditorView, keymap, highlightActiveLine, drawSelection, placeholder } from '@codemirror/view';
+// No drawSelection(): it paints the selection in a layer UNDER the content, so
+// anything with a background of its own — inline code, a fenced block, a
+// mention's highlight — punches a hole in it. The browser's native selection
+// paints over them, which is what makes a selection readable in prose.
+import { EditorView, keymap, highlightActiveLine, placeholder } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 // markdownLanguage, not the default base: the default is plain CommonMark,
 // which has no tables and no strikethrough — their nodes never appear in the
@@ -212,7 +216,6 @@ function mountEditor(source) {
                 // Image paths are relative to THIS document, not to the page URL.
                 docPath.of(state.current ?? ''),
                 history(),
-                drawSelection(),
                 highlightActiveLine(),
                 placeholder('Write markdown…'),
                 EditorView.lineWrapping,
