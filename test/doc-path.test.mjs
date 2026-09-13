@@ -6,7 +6,7 @@
 // wrong answer rather than a 404 you would notice.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assetUrl, linkTarget, rootAssetUrl } from '../client/doc-path.js';
+import { assetUrl, documentFromUrl, linkTarget, rootAssetUrl, urlForDocument } from '../client/doc-path.js';
 
 test('a relative path resolves against the document, not the root', () => {
     assert.equal(
@@ -88,4 +88,21 @@ test('anything else is left to the browser', () => {
     assert.equal(linkTarget('mailto:x@example.com', 'a.md').kind, 'external');
     assert.equal(linkTarget('assets/shot.png', 'guide/index.md').kind, 'asset');
     assert.equal(linkTarget('assets/shot.png', 'guide/index.md').url, '/guide/assets/shot.png');
+});
+
+// --- a document's address ----------------------------------------------------
+
+test('a document has a URL, and a URL names a document', () => {
+    assert.equal(urlForDocument('guide/page.md'), '/guide/page.md');
+    assert.equal(urlForDocument('guide/mon doc.md'), '/guide/mon%20doc.md');
+
+    assert.equal(documentFromUrl('/guide/page.md'), 'guide/page.md');
+    assert.equal(documentFromUrl('/guide/mon%20doc.md'), 'guide/mon doc.md');
+    assert.equal(documentFromUrl(urlForDocument('a/b/c.md')), 'a/b/c.md', 'round trip');
+});
+
+test('a URL that names no document is not one', () => {
+    assert.equal(documentFromUrl('/'), null);
+    assert.equal(documentFromUrl('/assets/shot.png'), null);
+    assert.equal(documentFromUrl(''), null);
 });

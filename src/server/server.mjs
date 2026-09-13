@@ -245,6 +245,25 @@ export async function startServer({ root, host = '127.0.0.1', port = 4830, title
             return;
         }
 
+        // --- a document's own URL --------------------------------------------
+        // /guide/page.md serves the editor, not the file: it is the address of
+        // the page you are reading, so a refresh or a shared link lands back on
+        // it. The raw markdown is what /api/file is for.
+        // The path still has to be one this server would talk about at all:
+        // markdownTarget enforces under-the-root and no dotted segment, so
+        // /.secrets/token.md stays refused even though nothing of it would be
+        // served. Whether the document exists is the editor's business — it
+        // says "not in this tree" better than a bare 404 page.
+        if (request.method === 'GET' && route.toLowerCase().endsWith('.md')) {
+            if (!markdownTarget(root, route)) {
+                text(response, 404, 'Not found.');
+                return;
+            }
+            response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+            response.end(renderShell({ title: documentTitle, root }));
+            return;
+        }
+
         // --- assets referenced by the documents -----------------------------
         if (request.method === 'GET') {
             const target = resolveInRoot(root, route);

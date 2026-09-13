@@ -19,7 +19,7 @@ import { codeLanguages } from './code-languages.js';
 import { codeHighlighting } from './highlight.js';
 import { tables, tableTheme } from './table.js';
 import { frontmatter, frontmatterTheme } from './frontmatter.js';
-import { docPath, followLink, linkTarget } from './doc-path.js';
+import { docPath, documentFromUrl, followLink, linkTarget, urlForDocument } from './doc-path.js';
 import { editingKeymap, menuItems, showContextMenu } from './editing.js';
 import { api, RequestError } from './api.js';
 import { livePreview, livePreviewTheme } from './live-preview.js';
@@ -311,7 +311,21 @@ function mountEditor(source) {
     window.__mdEditorView = view;
 }
 
-async function openFile(path, { hash = '' } = {}) {
+/**
+ * Keeps the address bar on the document being read, so a refresh — or a link
+ * pasted to someone running the same tree — lands back on it. The server
+ * answers any *.md URL with the editor for the same reason.
+ */
+function rememberInUrl(path, hash, { replace = false } = {}) {
+    const url = urlForDocument(path) + (hash ? `#${encodeURIComponent(hash)}` : '');
+    if (!replace && window.location.pathname + window.location.hash === url) return;
+    // window.history, explicitly: this module imports `history` from
+    // @codemirror/commands, and the bare name is that one — pushState was being
+    // looked up on the undo extension, which threw on every load.
+    window.history[replace ? 'replaceState' : 'pushState']({ path, hash }, '', url);
+}
+
+async function openFile(path, { hash = '', push = true } = {}) {
     if (state.dirty) await save();
     try {
         const { source, mtime } = await api.read(path);
@@ -326,6 +340,7 @@ async function openFile(path, { hash = '' } = {}) {
         setStatus('');
         paintTree();
         view.focus();
+        if (push) rememberInUrl(path, hash);
         if (hash) scrollToHeading(hash);
     } catch (error) {
         if (isNetworkFailure(error)) setOffline(true);
@@ -372,6 +387,7 @@ function scrollToHeading(hash) {
             effects: EditorView.scrollIntoView(line.from, { y: 'start', yMargin: 24 }),
         });
         view.focus();
+        rememberInUrl(state.current, hash, { replace: true });
         return;
     }
 }
@@ -670,6 +686,12 @@ window.addEventListener('keydown', event => {
     }
 });
 
+// Back and forward walk the documents you opened, like any other page.
+window.addEventListener('popstate', event => {
+    const path = event.state?.path ?? documentFromUrl(window.location.pathname);
+    if (path) openFile(path, { hash: event.state?.hash ?? window.location.hash.slice(1), push: false });
+});
+
 // A pending edit must not be lost to a closed tab.
 window.addEventListener('beforeunload', event => {
     if (!state.dirty) return;
@@ -681,9 +703,12 @@ window.addEventListener('beforeunload', event => {
 await refreshTree();
 await refreshMentions();
 
-// Open something on arrival rather than showing an empty frame — the root's
-// index page if there is one, since that is the tree's landing page.
+// What to open on arrival: what the URL asks for — a refresh, a bookmark, a
+// link someone sent — else the root's index page, else the first document
+// there is, rather than an empty frame.
+const fromUrl = documentFromUrl(window.location.pathname);
 const first =
+    fromUrl ??
     state.rootIndex ??
     (function firstFile(nodes) {
         for (const node of nodes) {
@@ -694,4 +719,11 @@ const first =
         }
         return null;
     })(state.tree);
-if (first) openFile(first);
+
+if (first) {
+    // The address is already right when it is where we came from: replace it
+    // rather than stacking a second entry on the very first load.
+    const hash = decodeURIComponent(window.location.hash.slice(1));
+    openFile(first, { hash, push: false });
+    rememberInUrl(first, hash, { replace: true });
+}

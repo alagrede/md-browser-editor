@@ -98,6 +98,13 @@ Every formatting command is a **toggle**: ⌘B on bold text takes the bold off, 
 asking for a heading 2 on a heading 2 gives you a paragraph back — a command that
 only ever adds is one you undo by hand. Enter continues a list or a quote.
 
+**Every document has an address.** Opening one puts it in the URL, so a refresh
+lands back on it, Back and Forward walk the documents you opened, and a link
+like `http://127.0.0.1:4830/guide/page.md#a-heading` opens that page at that
+heading for anyone serving the same tree. The server answers a `*.md` URL with
+the editor for that reason; the raw markdown keeps its own address at
+`/api/file`.
+
 **A link between documents opens in the editor.** `[Accueil](../accueil.md)`
 loads that document, `page.md#a-heading` loads it and scrolls there, and a bare
 `#a-heading` jumps within the one you are reading — resolved against the

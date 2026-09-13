@@ -104,3 +104,20 @@ export function linkTarget(href, from) {
     const url = assetUrl(pathPart, from); // same resolution rules as an image
     return { kind: 'document', path: url ? decodeURIComponent(url.replace(/^\//, '')) : pathPart, hash };
 }
+
+/** The address a document is reachable at, encoded for a URL. */
+export function urlForDocument(path) {
+    return assetUrl(String(path ?? ''), '') ?? '/';
+}
+
+/** The document a URL points at, root-relative, or null for the bare root. */
+export function documentFromUrl(pathname) {
+    const decoded = (() => {
+        try {
+            return decodeURIComponent(String(pathname ?? ''));
+        } catch {
+            return String(pathname ?? '');
+        }
+    })().replace(/^\/+/, '');
+    return decoded.toLowerCase().endsWith('.md') ? decoded : null;
+}

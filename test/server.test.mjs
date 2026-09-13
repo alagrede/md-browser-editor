@@ -194,3 +194,26 @@ test('installing twice changes nothing', async () => {
     assert.deepEqual(again.report.map(entry => entry.action), ['kept', 'kept']);
     assert.equal(readFileSync(path.join(root, 'AGENTS.md'), 'utf8').match(/## Mentions in the markdown/g).length, 1);
 });
+
+test('a document URL serves the editor, so a refresh lands back on it', async () => {
+    const page = await call('/guide/page.md');
+    assert.equal(page.status, 200);
+    assert.match(page.headers.get('content-type'), /text\/html/);
+    assert.match(await page.text(), /<div id="app">/, 'the editor, not the raw markdown');
+
+    // Even for a document that does not exist: the editor says so better than
+    // a bare 404 page would.
+    assert.equal((await call('/nulle-part.md')).status, 200);
+
+    // But a path this server would never talk about stays refused, even though
+    // only the static shell was ever on offer.
+    assert.equal((await call('/.secrets/token.md')).status, 404);
+    // Nothing about "/../" is tested here: both fetch and Node's URL parser
+    // resolve it away before the server sees a path at all. The traversal that
+    // CAN arrive comes through the ?path= parameter, which is not normalised by
+    // anything — that is the case covered above.
+
+    // And the raw text still has its own address.
+    const raw = await (await call('/api/file?path=guide/page.md')).json();
+    assert.match(raw.source, /# Page/);
+});
