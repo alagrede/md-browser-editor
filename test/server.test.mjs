@@ -156,3 +156,41 @@ test('the event stream reports a file changing under the editor', async () => {
 
     assert.match(seen, /watched\.md/, 'the changed path reaches the browser');
 });
+
+// --- teaching the agents, from the web UI ------------------------------------
+
+test('agent status reports our section, not merely a file called AGENTS.md', async () => {
+    writeFileSync(path.join(root, 'AGENTS.md'), '# Le projet\n\nRègle maison.\n');
+    const before = await (await call('/api/agent-status')).json();
+    assert.equal(before.codex, false, 'a project’s own AGENTS.md is not our contract');
+    assert.equal(before.claude, false);
+
+    const installed = await (await call('/api/init-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ claude: true, codex: true }),
+    })).json();
+    assert.deepEqual(
+        installed.report.map(entry => entry.action).sort(),
+        ['appended', 'written']
+    );
+
+    const after = await (await call('/api/agent-status')).json();
+    assert.equal(after.claude, true);
+    assert.equal(after.codex, true);
+
+    const agents = readFileSync(path.join(root, 'AGENTS.md'), 'utf8');
+    assert.match(agents, /Règle maison/, 'what the project wrote stays');
+    assert.match(agents, /## Mentions in the markdown/);
+    assert.match(readFileSync(path.join(root, '.claude/commands/mentions.md'), 'utf8'), /\$ARGUMENTS/);
+});
+
+test('installing twice changes nothing', async () => {
+    const again = await (await call('/api/init-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+    })).json();
+    assert.deepEqual(again.report.map(entry => entry.action), ['kept', 'kept']);
+    assert.equal(readFileSync(path.join(root, 'AGENTS.md'), 'utf8').match(/## Mentions in the markdown/g).length, 1);
+});

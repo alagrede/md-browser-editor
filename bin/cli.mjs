@@ -6,7 +6,12 @@ import { spawn } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { agentsSection, claudeCommand, MENTIONS_COMMAND_NAME, upsertSection } from '../src/agentPrompt.mjs';
+import {
+    agentsSection,
+    claudeCommand,
+    installAgentFiles,
+    MENTIONS_COMMAND_NAME,
+} from '../src/agentPrompt.mjs';
 import { parseArgs, UsageError } from '../src/args.mjs';
 import { collectMentions } from '../src/collect.mjs';
 import { removeAllMentions, removeMention } from '../src/mentions.mjs';
@@ -87,31 +92,28 @@ async function initAgentCommand(argv) {
         return;
     }
 
+    const report = await installAgentFiles(root, {
+        claude: wantClaude,
+        codex: wantCodex,
+        force: args.has('--force'),
+    });
+
+    const SAID = {
+        written: 'Wrote',
+        replaced: 'Replaced',
+        created: 'Wrote',
+        appended: 'Added a section to',
+        updated: 'Updated the section in',
+    };
+
     const done = [];
-
-    if (wantClaude) {
-        const file = path.join(root, '.claude', 'commands', `${MENTIONS_COMMAND_NAME}.md`);
-        const exists = existsSync(file);
-        if (exists && !args.has('--force')) {
-            console.log(`Kept  ${path.relative(root, file)} (already there — --force to replace it)`);
-        } else {
-            await mkdir(path.dirname(file), { recursive: true });
-            await writeFile(file, claudeCommand(), 'utf8');
-            done.push(`${exists ? 'Replaced' : 'Wrote'} ${path.relative(root, file)} → /${MENTIONS_COMMAND_NAME}`);
+    for (const entry of report) {
+        if (entry.action === 'kept') {
+            console.log(`Kept  ${entry.path} (${entry.note})`);
+            continue;
         }
-    }
-
-    if (wantCodex) {
-        const file = path.join(root, 'AGENTS.md');
-        const existing = existsSync(file) ? await readFile(file, 'utf8') : '';
-        const { content, action } = upsertSection(existing, agentsSection());
-        if (action === 'unchanged') {
-            console.log('Kept  AGENTS.md (its mentions section is already current)');
-        } else {
-            await writeFile(file, content, 'utf8');
-            const said = { created: 'Wrote', appended: 'Added a section to', updated: 'Updated the section in' }[action];
-            done.push(`${said} AGENTS.md`);
-        }
+        const arrow = entry.target === 'claude' ? ` → /${MENTIONS_COMMAND_NAME}` : '';
+        done.push(`${SAID[entry.action]} ${entry.path}${arrow}`);
     }
 
     for (const line of done) console.log(line);

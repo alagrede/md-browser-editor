@@ -10,6 +10,7 @@ import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CLAUDE_COMMAND_PATH, CODEX_AGENTS_PATH, installAgentFiles, SECTION_OPEN } from '../agentPrompt.mjs';
 import { collectMentions } from '../collect.mjs';
 import { removeMention } from '../mentions.mjs';
 import { hrefFor, markdownTarget, mimeFor, resolveInRoot } from '../paths.mjs';
@@ -179,6 +180,40 @@ export async function startServer({ root, host = '127.0.0.1', port = 4830, title
             const next = removeMention(source, id);
             if (next !== source) await writeFile(target, next, 'utf8');
             json(response, 200, { path: url.searchParams.get('path'), source: next });
+            return;
+        }
+
+        // The "set up my agent" button. It writes two known files into the
+        // served root and nothing else — no path comes from the request, which
+        // is what keeps this from being a way to write anywhere.
+        if (route === '/api/init-agent' && request.method === 'POST') {
+            let options = {};
+            try {
+                options = JSON.parse((await readBody(request, 4096)) || '{}');
+            } catch {
+                return void json(response, 400, { error: 'Expected a JSON body.' });
+            }
+            const report = await installAgentFiles(root, {
+                claude: options.claude !== false,
+                codex: options.codex !== false,
+                force: options.force === true,
+            });
+            json(response, 200, { root: path.basename(root), report });
+            return;
+        }
+
+        // What is already installed, so the panel can say so before you click.
+        if (route === '/api/agent-status' && request.method === 'GET') {
+            const agents = path.join(root, CODEX_AGENTS_PATH);
+            // An AGENTS.md written by the project is not our section: saying
+            // "installed" because the file exists would be a confident lie.
+            const codex = existsSync(agents) && (await readFile(agents, 'utf8')).includes(SECTION_OPEN);
+            json(response, 200, {
+                root: path.basename(root),
+                claude: existsSync(path.join(root, CLAUDE_COMMAND_PATH)),
+                codex,
+                paths: { claude: CLAUDE_COMMAND_PATH, codex: CODEX_AGENTS_PATH },
+            });
             return;
         }
 

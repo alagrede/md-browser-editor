@@ -40,6 +40,13 @@ export const api = {
             headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
             body: source,
         }),
+    agentStatus: () => request('/api/agent-status'),
+    initAgent: options =>
+        request('/api/init-agent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(options ?? {}),
+        }),
     resolveMention: (path, id) =>
         request(`/api/mention?path=${encodeURIComponent(path)}&id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };

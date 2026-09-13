@@ -163,7 +163,11 @@ A prompt for Claude Code, or any agent that can read files, fits in a sentence:
 > Run `md-browser-editor mentions . --json`, apply each instruction to the
 > passage between its markers, then remove that mention's markers.
 
-One command puts that contract where your agents will find it:
+**From the editor**, the sidebar's *Agent setup* panel explains the loop and
+installs both files into the directory being served, in one click each. It says
+what is already there before you click, and re-clicking changes nothing.
+
+Or one command, which can be aimed anywhere:
 
 ```sh
 npx md-browser-editor init-agent .          # both

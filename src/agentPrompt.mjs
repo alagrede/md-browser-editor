@@ -8,6 +8,10 @@
 // Both are generated from the text below: two copies of a contract that drift
 // is worse than no copy at all.
 
+import { existsSync } from 'node:fs';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+
 export const MENTIONS_COMMAND_NAME = 'mentions';
 
 /** Delimiters of the section this tool owns inside a file it does not own. */
@@ -97,4 +101,56 @@ export function upsertSection(existing, section) {
     }
 
     return { content: `${content.replace(/\s*$/, '')}\n\n${section}\n`, action: 'appended' };
+}
+
+
+/** Where each agent reads its instructions, relative to a directory. */
+export const CLAUDE_COMMAND_PATH = path.join('.claude', 'commands', `${MENTIONS_COMMAND_NAME}.md`);
+export const CODEX_AGENTS_PATH = 'AGENTS.md';
+
+/**
+ * Writes the contract into `root`. The CLI and the web button both come here,
+ * so the two cannot install different things.
+ *
+ * Only ever touches the two paths above — this is the one place the tool writes
+ * something that is not a document the editor opened, and it stays that narrow
+ * on purpose.
+ *
+ * @param {string} root
+ * @param {{claude?: boolean, codex?: boolean, force?: boolean}} options
+ * @returns {Promise<Array<{target: 'claude'|'codex', path: string, action: string, note?: string}>>}
+ */
+export async function installAgentFiles(root, { claude = true, codex = true, force = false } = {}) {
+    const report = [];
+
+    if (claude) {
+        const file = path.join(root, CLAUDE_COMMAND_PATH);
+        const exists = existsSync(file);
+        if (exists && !force) {
+            report.push({
+                target: 'claude',
+                path: CLAUDE_COMMAND_PATH,
+                action: 'kept',
+                note: 'already there — a customised one is not overwritten',
+            });
+        } else {
+            await mkdir(path.dirname(file), { recursive: true });
+            await writeFile(file, claudeCommand(), 'utf8');
+            report.push({ target: 'claude', path: CLAUDE_COMMAND_PATH, action: exists ? 'replaced' : 'written' });
+        }
+    }
+
+    if (codex) {
+        const file = path.join(root, CODEX_AGENTS_PATH);
+        const existing = existsSync(file) ? await readFile(file, 'utf8') : '';
+        const { content, action } = upsertSection(existing, agentsSection());
+        if (action === 'unchanged') {
+            report.push({ target: 'codex', path: CODEX_AGENTS_PATH, action: 'kept', note: 'its section is current' });
+        } else {
+            await writeFile(file, content, 'utf8');
+            report.push({ target: 'codex', path: CODEX_AGENTS_PATH, action });
+        }
+    }
+
+    return report;
 }

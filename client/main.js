@@ -26,6 +26,11 @@ import { askChoice, askText } from './ask.js';
 
 const dom = {
     tree: document.getElementById('tree'),
+    agentPanel: document.getElementById('agent-panel'),
+    showAgent: document.getElementById('show-agent'),
+    closeAgent: document.getElementById('close-agent'),
+    agentRoot: document.getElementById('agent-root'),
+    agentResult: document.getElementById('agent-result'),
     editor: document.getElementById('editor'),
     emptyState: document.getElementById('empty-state'),
     currentPath: document.getElementById('current-path'),
@@ -436,10 +441,68 @@ async function createFile() {
     };
 })();
 
+// --- agent setup -------------------------------------------------------------
+
+async function refreshAgentStatus() {
+    try {
+        const status = await api.agentStatus();
+        dom.agentRoot.textContent = status.root;
+        for (const target of ['claude', 'codex']) {
+            const element = document.querySelector(`[data-state="${target}"]`);
+            element.textContent = status[target] ? 'installed' : 'not installed';
+            element.classList.toggle('is-installed', status[target]);
+        }
+    } catch (error) {
+        dom.agentResult.textContent = error.message;
+    }
+}
+
+async function installAgent(target) {
+    dom.agentResult.textContent = 'Writing…';
+    try {
+        const { report } = await api.initAgent({
+            claude: target === 'claude',
+            codex: target === 'codex',
+        });
+        const SAID = {
+            written: 'Wrote',
+            replaced: 'Replaced',
+            created: 'Wrote',
+            appended: 'Added a section to',
+            updated: 'Updated the section in',
+            kept: 'Kept',
+        };
+        dom.agentResult.textContent = report
+            .map(entry => `${SAID[entry.action]} ${entry.path}${entry.note ? ` — ${entry.note}` : ''}`)
+            .join(' · ');
+        refreshAgentStatus();
+        refreshTree(); // AGENTS.md is markdown: it belongs in the tree
+    } catch (error) {
+        dom.agentResult.textContent = error.message;
+    }
+}
+
+function toggleAgentPanel(open) {
+    dom.agentPanel.hidden = !open;
+    document.body.classList.toggle('panel-open', open || !dom.panel.hidden);
+    if (open) {
+        dom.panel.hidden = true;
+        dom.agentResult.textContent = '';
+        refreshAgentStatus();
+    }
+}
+
+dom.showAgent.onclick = () => toggleAgentPanel(dom.agentPanel.hidden);
+dom.closeAgent.onclick = () => toggleAgentPanel(false);
+for (const button of document.querySelectorAll('.install-agent')) {
+    button.onclick = () => installAgent(button.dataset.install);
+}
+
 dom.newFile.onclick = createFile;
 dom.addMention.onclick = addMention;
 function togglePanel(open) {
     dom.panel.hidden = !open;
+    if (open) dom.agentPanel.hidden = true;
     // The panel takes its width from the editor rather than covering it:
     // reading a mention's quote while its passage is hidden underneath is
     // exactly the moment you need to see both.
