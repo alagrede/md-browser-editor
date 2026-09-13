@@ -416,7 +416,16 @@ export const tables = StateField.define({
 });
 
 export const tableTheme = EditorView.theme({
-    '.cm-md-table-wrap': { position: 'relative', margin: '0.6em 0 1.2em', paddingRight: '18px', paddingBottom: '18px' },
+    // Padding, not margin: a block widget is measured by its border box, and a
+    // margin is height CodeMirror never learns about — the caret then lands
+    // that far off everywhere below the table.
+    '.cm-md-table-wrap': {
+        position: 'relative',
+        margin: '0',
+        paddingTop: '0.6em',
+        paddingRight: '18px',
+        paddingBottom: 'calc(18px + 1.2em)',
+    },
     '.cm-md-table': {
         borderCollapse: 'collapse',
         width: '100%',

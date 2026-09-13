@@ -19,12 +19,19 @@ function renderProperties(body) {
     heading.textContent = 'Properties';
     wrap.appendChild(heading);
 
+    const spacer = () => {
+        const element = document.createElement('div');
+        element.className = 'cm-frontmatter-spacer';
+        return element;
+    };
+
     const properties = parseFrontmatter(body);
     if (!properties.length) {
         const empty = document.createElement('div');
         empty.className = 'cm-frontmatter-empty';
         empty.textContent = body.trim() ? body.trim() : 'No properties';
         wrap.appendChild(empty);
+        wrap.appendChild(spacer());
         return wrap;
     }
 
@@ -60,6 +67,7 @@ function renderProperties(body) {
 
     table.appendChild(tbody);
     wrap.appendChild(table);
+    wrap.appendChild(spacer());
     return wrap;
 }
 
@@ -116,16 +124,21 @@ export const frontmatter = StateField.define({
 });
 
 export const frontmatterTheme = EditorView.theme({
+    // Padding, never margin. A block widget's height comes from its border
+    // box: a margin is space CodeMirror cannot see, so every position below it
+    // is off by that much — which is a caret landing on the wrong line.
     '.cm-frontmatter': {
         border: '1px solid var(--border)',
         borderRadius: '10px',
         background: 'var(--bg-side)',
         padding: '10px 12px',
-        margin: '0 0 1.4em',
+        marginBottom: '0',
         fontFamily: 'var(--sans)',
         fontSize: '0.85em',
         cursor: 'text',
     },
+    // The gap under the block, inside the measured element.
+    '.cm-frontmatter-spacer': { height: '1.2em' },
     '.cm-frontmatter-head': {
         textTransform: 'uppercase',
         letterSpacing: '0.06em',

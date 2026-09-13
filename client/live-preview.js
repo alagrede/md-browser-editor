@@ -315,7 +315,15 @@ export const livePreviewTheme = EditorView.theme({
     },
     '.cm-md-listmark': { color: 'var(--accent)' },
     '.cm-md-link': { color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer' },
-    '.cm-md-image img': { maxWidth: '100%', borderRadius: '8px', display: 'block', margin: '0.4em 0' },
+    // Same reason as the block widgets: keep the spacing inside what gets
+    // measured. An image's own margins would not be part of its line's height.
+    '.cm-md-image': { display: 'inline-block', paddingTop: '0.4em', paddingBottom: '0.4em' },
+    '.cm-md-image img': { maxWidth: '100%', borderRadius: '8px', display: 'block' },
     '.cm-md-image-broken': { color: 'var(--text-dim)', fontStyle: 'italic' },
-    '.cm-md-rule': { border: '0', borderTop: '1px solid var(--border)', margin: '0.6em 0' },
+    '.cm-md-rule': {
+        border: '0',
+        borderTop: '1px solid var(--border)',
+        margin: '0',
+        paddingTop: '0.6em',
+    },
 });
