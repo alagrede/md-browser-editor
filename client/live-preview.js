@@ -15,6 +15,7 @@ import { RangeSet } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import { frontmatterRange } from './frontmatter.js';
 import { assetUrl, docPath, rootAssetUrl } from './doc-path.js';
+import { tableRangesOf } from './table.js';
 
 /** Marks hidden by replacing them with nothing. */
 const HIDE = Decoration.replace({});
@@ -113,6 +114,12 @@ function buildDecorations(view) {
     // The frontmatter has its own widget, and markdown reads it as a setext
     // heading — decorating it would both overlap the widget and style the raw
     // YAML as a title while it is being edited.
+    // Tables are a block widget of their own; decorating their source would
+    // overlap it. The ranges come from the table field, which already scanned
+    // for them — this runs on every cursor move.
+    const tables = tableRangesOf(state);
+    const inTable = (from, to) => tables.some(range => from >= range.from && to <= range.to);
+
     const frontmatter = frontmatterRange(state);
     // Containment, not overlap: the tree's root node spans the whole document
     // and therefore overlaps the frontmatter — testing overlap skipped every
@@ -132,12 +139,8 @@ function buildDecorations(view) {
             to,
             enter: node => {
                 const name = node.name;
-                if (inFrontmatter(node.from, node.to)) return false;
+                if (inFrontmatter(node.from, node.to) || inTable(node.from, node.to)) return false;
 
-                // Tables are rendered as a block widget by the `tables`
-                // plugin; descending into one would decorate text that is no
-                // longer displayed, and overlap its widget.
-                if (name === 'Table') return false;
 
                 if (name === 'Image') {
                     if (touches(state, node.from, node.to)) return false;

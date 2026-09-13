@@ -6,7 +6,90 @@
 // stays the only state: the widget never holds anything the markdown does not.
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 import { RangeSet, StateField } from '@codemirror/state';
-import { syntaxTree } from '@codemirror/language';
+import { findFrontmatter } from '../src/frontmatter.mjs';
+
+// --- finding tables ---------------------------------------------------------
+
+// Deliberately a line scan rather than the syntax tree. CodeMirror parses
+// lazily: syntaxTree(state) only covers what has been parsed so far, so a table
+// far down a long document has no Table node when the field is built, and the
+// field would have to be rebuilt every time the parser advances. A table's
+// grammar is three lines of rules — scanning for it is both simpler and exact.
+
+const splitCells = line =>
+    line
+        .trim()
+        .replace(/^\|/, '')
+        .replace(/(?<!\\)\|$/, '')
+        .split(/(?<!\\)\|/);
+
+const hasPipe = line => /(?<!\\)\|/.test(line);
+
+const isDelimiter = line => {
+    if (!hasPipe(line)) return false;
+    const cells = splitCells(line);
+    return cells.length > 0 && cells.every(cell => /^\s*:?-+:?\s*$/.test(cell));
+};
+
+const isRow = line => line.trim().length > 0 && hasPipe(line) && !isDelimiter(line);
+
+/**
+ * Every table in `text`, as {from, to} offsets.
+ *
+ * A table is a row, a delimiter row with the SAME number of cells (what GFM
+ * requires, and what makes a false positive on prose essentially impossible),
+ * then rows until a line that is not one. Fenced code is skipped — a shell
+ * snippet piping into jq is full of pipes — and so is the frontmatter.
+ */
+export function findTableRanges(text) {
+    const source = String(text ?? '');
+    const lines = source.split('\n');
+
+    // Offset of the start of each line, so a range can be reported in the
+    // document's own coordinates.
+    const offsets = [];
+    let cursor = 0;
+    for (const line of lines) {
+        offsets.push(cursor);
+        cursor += line.length + 1;
+    }
+
+    const frontmatter = findFrontmatter(source);
+    const ranges = [];
+    let fence = null;
+
+    for (let index = 0; index < lines.length; index++) {
+        const line = lines[index];
+
+        if (frontmatter && offsets[index] < frontmatter.to) continue;
+
+        const fenceMark = /^\s{0,3}(```+|~~~+)/.exec(line);
+        if (fenceMark) {
+            if (!fence) fence = fenceMark[1][0];
+            else if (fenceMark[1][0] === fence) fence = null;
+            continue;
+        }
+        if (fence) continue;
+
+        const next = lines[index + 1];
+        if (
+            next === undefined ||
+            !isRow(line) ||
+            !isDelimiter(next) ||
+            splitCells(line).length !== splitCells(next).length
+        ) {
+            continue;
+        }
+
+        let end = index + 1;
+        while (end + 1 < lines.length && isRow(lines[end + 1])) end += 1;
+
+        ranges.push({ from: offsets[index], to: offsets[end] + lines[end].length });
+        index = end;
+    }
+
+    return ranges;
+}
 
 // --- model ------------------------------------------------------------------
 
@@ -293,18 +376,9 @@ function renderTable(source, view, widget) {
 
 // A StateField, not a ViewPlugin: CodeMirror refuses block decorations coming
 // from a plugin ("Block decorations may not be specified via plugins"), because
-// they change the height of lines the viewport was measured with. It also means
-// the whole document is scanned rather than the viewport — tables are rare and
-// the scan is a tree walk, so that is the cheaper side of the trade.
+// they change the height of lines the viewport was measured with.
 function buildDecorations(state) {
-    const ranges = [];
-    syntaxTree(state).iterate({
-        enter: node => {
-            if (node.name !== 'Table') return;
-            ranges.push({ from: node.from, to: node.to });
-            return false;
-        },
-    });
+    const ranges = findTableRanges(state.doc.toString());
 
     return RangeSet.of(
         ranges.map(range =>
@@ -315,6 +389,23 @@ function buildDecorations(state) {
         ),
         true
     );
+}
+
+/**
+ * The table ranges the field already holds. Recomputing them per keystroke —
+ * and the doc.toString() they need — would put a full-document scan on the
+ * cursor's path; the field only rebuilds when the document changes.
+ */
+export function tableRangesOf(state) {
+    const decorations = state.field(tables, false);
+    if (!decorations) return [];
+    const ranges = [];
+    const cursor = decorations.iter();
+    while (cursor.value) {
+        ranges.push({ from: cursor.from, to: cursor.to });
+        cursor.next();
+    }
+    return ranges;
 }
 
 export const tables = StateField.define({

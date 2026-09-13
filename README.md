@@ -190,6 +190,10 @@ trust and nothing more.
 
 ## Accepted limits
 
+- **A table is recognised by its GFM shape**: a row, then a delimiter row with
+  the same number of cells. That second rule is what keeps prose containing a
+  pipe from turning into a table; a hand-written table whose delimiter row is
+  the wrong width stays as text, visibly.
 - **A rendered table has no raw view.** It is edited through its cells, like
   in Znote. Nothing is lost — the markdown is rewritten from the cells on every
   change — but a hand-crafted alignment row comes back normalized.
