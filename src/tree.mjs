@@ -3,8 +3,9 @@
 // Dotted entries are skipped for the same reason the path resolver refuses
 // them (.git/, .env), and so are the usual heavy directories nobody wants to
 // expand in a documentation tree.
-import { readdir } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { documentTitle } from './frontmatter.mjs';
 
 const SKIP = new Set(['node_modules', 'dist', 'build', 'coverage', '.git']);
 
@@ -16,7 +17,40 @@ const SKIP = new Set(['node_modules', 'dist', 'build', 'coverage', '.git']);
  */
 const INDEX_NAME = 'index.md';
 
+// Sorted by FILE name, even though the title is what is displayed: a numeric
+// prefix (01-intro.md) is the only ordering lever an author has left once the
+// file name stops being shown, and it is the convention every docs-as-code
+// generator already uses.
 const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+
+/**
+ * What a document is called: its frontmatter `title`, else its first heading.
+ * Reading every file on every tree request is the cost of showing real names
+ * instead of slugs, so the result is kept until the file's mtime moves.
+ */
+const titleCache = new Map(); // absolute path -> {mtimeMs, title}
+
+async function titleOf(file) {
+    let info;
+    try {
+        info = await stat(file);
+    } catch {
+        return undefined;
+    }
+    const cached = titleCache.get(file);
+    if (cached && cached.mtimeMs === info.mtimeMs) return cached.title;
+
+    let title;
+    try {
+        // The name lives at the top; a whole 2 MB changelog need not be read.
+        const head = (await readFile(file, 'utf8')).slice(0, 4096);
+        title = documentTitle(head) ?? undefined;
+    } catch {
+        title = undefined;
+    }
+    titleCache.set(file, { mtimeMs: info.mtimeMs, title });
+    return title;
+}
 
 const isIndex = name => name.toLowerCase() === INDEX_NAME;
 
@@ -42,6 +76,7 @@ async function scan(root, dir) {
 
         if (entry.isDirectory()) {
             const child = await scan(root, path.join(dir, entry.name));
+            const indexTitle = child.index ? await titleOf(path.join(root, child.index)) : undefined;
             // A directory holding no markdown anywhere below is noise in a
             // documentation tree (an images/ folder, a build leftover) — but a
             // directory that IS a page stays, children or not.
@@ -50,6 +85,9 @@ async function scan(root, dir) {
                     type: 'dir',
                     name: entry.name,
                     path: relativeOf(entry.name),
+                    // A directory that is a page is named by that page; a plain
+                    // directory keeps its folder name, which is all it has.
+                    ...(indexTitle ? { title: indexTitle } : {}),
                     ...(child.index ? { index: child.index } : {}),
                     children: child.nodes,
                 });
@@ -65,7 +103,8 @@ async function scan(root, dir) {
             index = relativeOf(entry.name);
             continue;
         }
-        files.push({ type: 'file', name: entry.name, path: relativeOf(entry.name) });
+        const title = await titleOf(path.join(dir, entry.name));
+        files.push({ type: 'file', name: entry.name, path: relativeOf(entry.name), ...(title ? { title } : {}) });
     }
 
     dirs.sort(byName);

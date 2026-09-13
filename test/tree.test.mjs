@@ -77,3 +77,25 @@ test('a directory without an index keeps its plain folder behaviour', async () =
     assert.equal(folder.index, undefined);
     assert.equal(await rootIndex(root), undefined);
 });
+
+test('the tree names a document by its title, not its file name', async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'md-title-'));
+    mkdirSync(path.join(root, 'guide'));
+    writeFileSync(path.join(root, 'guide/index.md'), '---\ntitle: Guide utilisateur\n---\n\n# Autre\n');
+    writeFileSync(path.join(root, 'guide/02-setup.md'), '# Installation\n');
+    writeFileSync(path.join(root, 'guide/03-plain.md'), 'du texte sans titre\n');
+
+    const [folder] = await buildTree(root);
+
+    assert.equal(folder.title, 'Guide utilisateur', 'a folder is named by its index page');
+    assert.deepEqual(
+        folder.children.map(node => node.title ?? node.name),
+        ['Installation', '03-plain.md'],
+        'titles are displayed, but a document with no title keeps its file name'
+    );
+    // Ordering follows the FILE name: renaming to 01-, 02- is what an author
+    // has left to order a tree whose file names are no longer shown.
+    writeFileSync(path.join(root, 'guide/01-first.md'), '# Zzz dernier alphabétiquement\n');
+    const [again] = await buildTree(root);
+    assert.deepEqual(again.children.map(node => node.name), ['01-first.md', '02-setup.md', '03-plain.md']);
+});

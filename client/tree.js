@@ -48,7 +48,7 @@ function level(nodes, handlers, depth) {
             const open = openDirs.has(node.path);
             row.classList.add('tree-dir');
             const chevron = span('chevron', open ? '▾' : '▸');
-            row.append(chevron, span('tree-name', node.name));
+            row.append(chevron, span('tree-name', node.title ?? node.name));
 
             // A directory that has an index.md IS a document: its row opens it,
             // and only the chevron folds it. Without an index there is nothing
@@ -71,7 +71,10 @@ function level(nodes, handlers, depth) {
         } else {
             row.classList.add('tree-file');
             if (node.path === handlers.current) row.classList.add('current');
-            row.append(span('tree-icon', '📄'), span('tree-name', node.name.replace(/\.md$/i, '')));
+            // The document's own name when it has one (frontmatter title, else its
+            // first heading); the file name is only a fallback — and the path
+            // stays one hover away.
+            row.append(span('tree-icon', '📄'), span('tree-name', node.title ?? node.name.replace(/\.md$/i, '')));
             row.title = node.path;
             row.onclick = () => handlers.onOpen(node.path);
             item.appendChild(row);

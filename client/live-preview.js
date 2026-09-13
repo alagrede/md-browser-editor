@@ -13,6 +13,7 @@
 import { Decoration, EditorView, ViewPlugin, WidgetType } from '@codemirror/view';
 import { RangeSet } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
+import { frontmatterRange } from './frontmatter.js';
 
 /** Marks hidden by replacing them with nothing. */
 const HIDE = Decoration.replace({});
@@ -95,6 +96,14 @@ function touches(state, from, to) {
 function buildDecorations(view) {
     const { state } = view;
     const decorations = [];
+    // The frontmatter has its own widget, and markdown reads it as a setext
+    // heading — decorating it would both overlap the widget and style the raw
+    // YAML as a title while it is being edited.
+    const frontmatter = frontmatterRange(state);
+    // Containment, not overlap: the tree's root node spans the whole document
+    // and therefore overlaps the frontmatter — testing overlap skipped every
+    // decoration in the file, not just the block's own.
+    const inFrontmatter = (from, to) => frontmatter && from >= frontmatter.from && to <= frontmatter.to;
     const lineClasses = new Map(); // line start → class, deduped
 
     const addLine = (pos, className) => {
@@ -109,6 +118,7 @@ function buildDecorations(view) {
             to,
             enter: node => {
                 const name = node.name;
+                if (inFrontmatter(node.from, node.to)) return false;
 
                 // Tables are rendered as a block widget by the `tables`
                 // plugin; descending into one would decorate text that is no

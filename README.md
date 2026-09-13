@@ -46,6 +46,20 @@ and a button to cycle its alignment — the delimiter row is not reachable any
 other way once the table is rendered. Every edit is serialized straight back
 into the document, so the file stays the only state.
 
+**Frontmatter is a Properties panel, not a heading.** A markdown parser reads
+`title: Guide` followed by `---` as a *setext heading*, so an unhandled
+frontmatter opens the document with a giant title made of its own metadata.
+Here the `---` block renders as a key/value panel (lists become chips), and
+clicking it brings the raw YAML back — the only honest way to edit a shape the
+panel does not fully model. A nested value is shown as nested rather than
+flattened into something that looks right and is not.
+
+**Documents are named by their title.** The tree shows a page's frontmatter
+`title`, else its first level-1 heading, else its file name — so
+`02-installation.md` reads as "Installation". Ordering still follows the *file*
+name: a numeric prefix is the only lever an author has left once file names
+stop being displayed.
+
 **A directory with an `index.md` is that page.** The folder row opens it
 instead of listing it inside itself under a name that says nothing, and only
 the chevron folds the children. The same goes for the root: its `index.md` is
@@ -174,6 +188,11 @@ trust and nothing more.
 - **The language list is curated, not exhaustive.** Bundling every mode
   CodeMirror knows would triple the download for languages documentation rarely
   contains. Adding one is three lines in `client/code-languages.js`.
+- **Frontmatter parsing covers the flat shape**, which is what frontmatter
+  actually has: scalars, quoted strings, inline `[a, b]` and block `- item`
+  lists. A nested map is marked as such and edited as raw YAML. Pulling in a
+  full YAML parser for the rest would cost more than it buys, in the bundle and
+  in the reading.
 - **One mention cannot contain another.** Overlapping instructions are a
   conversation, not an annotation.
 - **No rename, move or delete** from the browser. Those belong to your file
