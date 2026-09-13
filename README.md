@@ -163,11 +163,31 @@ A prompt for Claude Code, or any agent that can read files, fits in a sentence:
 > Run `md-browser-editor mentions . --json`, apply each instruction to the
 > passage between its markers, then remove that mention's markers.
 
-For Claude Code, `.claude/commands/mentions.md` in this repository is that
-prompt as a slash command — copy it next to your documents and the whole loop
-becomes `/mentions`. It carries the rules that matter: change nothing outside
-the marked passages, keep the document's language, report an unterminated
-marker instead of guessing its extent, and leave the work as a diff.
+One command puts that contract where your agents will find it:
+
+```sh
+npx md-browser-editor init-agent .          # both
+npx md-browser-editor init-agent . --claude # just the slash command
+npx md-browser-editor init-agent . --print  # write nothing, show it
+```
+
+- **Claude Code** gets `.claude/commands/mentions.md`, so the loop becomes
+  `/mentions`.
+- **Codex** gets a managed section in `AGENTS.md`, which it reads on its own —
+  it has no project-level slash commands. The section sits between two
+  comment markers, so re-running replaces it in place and whatever else that
+  file holds is left alone. An `AGENTS.md` you already wrote is appended to,
+  never replaced.
+
+Point it at the directory the agent will run in, which is not always the one
+you serve: in a mirror that a sync tool rewrites, a file the tool did not put
+there gets reported as an orphan at every pull. The project root above it is the
+better place.
+
+Both files carry the rules that matter: change nothing outside the marked
+passages, keep the document's language, report an unterminated marker instead of
+guessing its extent, say so when a prompt is ambiguous, and leave the work as a
+diff.
 
 ## The commands
 
@@ -175,6 +195,7 @@ marker instead of guessing its extent, and leave the work as a diff.
 | --- | --- |
 | `serve [dir]` | serve the tree and the editor (default: the current directory) |
 | `mentions [dir]` | list, filter or resolve the mentions |
+| `init-agent [dir]` | write the agent contract where Claude Code and Codex read it |
 
 ```
 serve     --port <n>   port to listen on (default 4830; incremented if busy)
@@ -185,6 +206,11 @@ mentions  --json           machine-readable output
           --file <path>    only that file's mentions
           --resolve <id>   drop one mention's markers, keeping its text
           --resolve-all    drop every mention's markers
+
+init-agent --claude       only .claude/commands/mentions.md
+           --codex        only the AGENTS.md section
+           --force        replace an existing command file
+           --print        write nothing, print what would be written
 ```
 
 `--help` on either prints the same. Unknown options are refused rather than

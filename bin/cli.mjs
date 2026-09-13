@@ -6,19 +6,21 @@ import { spawn } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { agentsSection, claudeCommand, MENTIONS_COMMAND_NAME, upsertSection } from '../src/agentPrompt.mjs';
 import { parseArgs, UsageError } from '../src/args.mjs';
 import { collectMentions } from '../src/collect.mjs';
 import { removeAllMentions, removeMention } from '../src/mentions.mjs';
 import { startServer } from '../src/server/server.mjs';
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 
 const USAGE = `md-browser-editor — read and edit a markdown tree in your browser.
 
 Usage: md-browser-editor <command> [options]
 
 Commands:
-  serve [dir]     serve <dir> (default: the current directory) and open the editor
-  mentions [dir]  list the mentions left for an AI agent
+  serve [dir]      serve <dir> (default: the current directory) and open the editor
+  mentions [dir]   list the mentions left for an AI agent
+  init-agent [dir] teach the coding agents in <dir> how to apply those mentions
 
 Run \`md-browser-editor <command> --help\` for a command's options.
 
@@ -50,6 +52,74 @@ Options:
 
 Exit code 1 when --resolve finds no such mention.
 `;
+
+const INIT_AGENT_USAGE = `Usage: md-browser-editor init-agent [dir] [options]
+
+Writes the "apply the mentions" contract where a coding agent working in <dir>
+will find it:
+
+  Claude Code   .claude/commands/${MENTIONS_COMMAND_NAME}.md — the loop becomes /${MENTIONS_COMMAND_NAME}
+  Codex         a managed section in AGENTS.md, which it reads on its own
+                (it has no project-level slash commands)
+
+Both, unless you ask for one. Safe to re-run: the AGENTS.md section is replaced
+in place, and whatever else that file holds is left alone.
+
+Options:
+  --claude     only the Claude Code command
+  --codex      only the AGENTS.md section
+  --force      overwrite an existing .claude command file
+  --print      write nothing, print what would be written
+`;
+
+async function initAgentCommand(argv) {
+    const args = parseArgs(argv, { flags: ['--claude', '--codex', '--force', '--print', '--help'] });
+    if (args.has('--help')) return void console.log(INIT_AGENT_USAGE);
+
+    const root = resolveRoot(args.positionals);
+    const both = !args.has('--claude') && !args.has('--codex');
+    const wantClaude = both || args.has('--claude');
+    const wantCodex = both || args.has('--codex');
+
+    if (args.has('--print')) {
+        if (wantClaude) console.log(`--- .claude/commands/${MENTIONS_COMMAND_NAME}.md ---\n\n${claudeCommand()}`);
+        if (wantCodex) console.log(`--- AGENTS.md (section) ---\n\n${agentsSection()}\n`);
+        return;
+    }
+
+    const done = [];
+
+    if (wantClaude) {
+        const file = path.join(root, '.claude', 'commands', `${MENTIONS_COMMAND_NAME}.md`);
+        const exists = existsSync(file);
+        if (exists && !args.has('--force')) {
+            console.log(`Kept  ${path.relative(root, file)} (already there — --force to replace it)`);
+        } else {
+            await mkdir(path.dirname(file), { recursive: true });
+            await writeFile(file, claudeCommand(), 'utf8');
+            done.push(`${exists ? 'Replaced' : 'Wrote'} ${path.relative(root, file)} → /${MENTIONS_COMMAND_NAME}`);
+        }
+    }
+
+    if (wantCodex) {
+        const file = path.join(root, 'AGENTS.md');
+        const existing = existsSync(file) ? await readFile(file, 'utf8') : '';
+        const { content, action } = upsertSection(existing, agentsSection());
+        if (action === 'unchanged') {
+            console.log('Kept  AGENTS.md (its mentions section is already current)');
+        } else {
+            await writeFile(file, content, 'utf8');
+            const said = { created: 'Wrote', appended: 'Added a section to', updated: 'Updated the section in' }[action];
+            done.push(`${said} AGENTS.md`);
+        }
+    }
+
+    for (const line of done) console.log(line);
+    if (done.length) {
+        console.log(`\nLeave mentions in your markdown, then ask the agent for them` +
+            `${wantClaude ? ` — /${MENTIONS_COMMAND_NAME} in Claude Code` : ''}.`);
+    }
+}
 
 function resolveRoot(positionals) {
     const root = path.resolve(positionals[0] ?? '.');
@@ -151,6 +221,7 @@ async function main() {
 
     if (command === 'serve') return serveCommand(rest);
     if (command === 'mentions') return mentionsCommand(rest);
+    if (command === 'init-agent') return initAgentCommand(rest);
 
     throw new UsageError(`Unknown command: ${command}`);
 }
