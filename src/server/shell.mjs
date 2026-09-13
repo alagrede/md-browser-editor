@@ -19,6 +19,11 @@ export function renderShell({ title, root }) {
 <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
+<div id="offline" hidden>
+  <strong>The editor cannot reach its server.</strong>
+  <span>Nothing you do here will be saved or loaded until it is back.</span>
+  <code id="offline-command">md-browser-editor serve</code>
+</div>
 <div id="app">
   <aside id="sidebar">
     <header class="sidebar-head">

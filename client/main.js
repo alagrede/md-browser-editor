@@ -58,6 +58,27 @@ const dom = {
  */
 const fromDisk = Annotation.define();
 
+/**
+ * The server is a local process someone started in a terminal, and it dies the
+ * way local processes do — Ctrl+C, a closed window, a laptop asleep. The page
+ * stays up, every click quietly fails, and "the tree does not work any more" is
+ * how that looks from here. So it gets said out loud.
+ */
+function setOffline(down) {
+    const banner = document.getElementById('offline');
+    if (banner.hidden !== down) return; // already in that state
+    banner.hidden = !down;
+    document.body.classList.toggle('is-offline', down);
+    if (down) {
+        const root = document.querySelector('.root-name')?.title;
+        document.getElementById('offline-command').textContent =
+            `md-browser-editor serve ${root ? `"${root}"` : ''}`.trim();
+    }
+}
+
+/** A failed fetch is the network, not the request. */
+const isNetworkFailure = error => error instanceof TypeError || /fetch/i.test(error?.message ?? '');
+
 const state = {
     tree: [],
     rootIndex: null,
@@ -305,6 +326,7 @@ async function openFile(path) {
         paintTree();
         view.focus();
     } catch (error) {
+        if (isNetworkFailure(error)) setOffline(true);
         setStatus(error.message, 'error');
     }
 }
@@ -441,9 +463,42 @@ async function createFile() {
 // leaves the choice to the save, which will be refused with both versions.
 (function liveReload() {
     if (typeof EventSource === 'undefined') return;
-    const events = new EventSource('/api/events');
 
-    events.onmessage = async message => {
+    let events = null;
+    let retry = null;
+
+    // EventSource reconnects on its own when a stream drops — but not when the
+    // connection is refused outright, which is exactly what a stopped server
+    // does. So the retry is ours, and it is what makes the banner disappear on
+    // its own once the server is back.
+    const reconnectLater = () => {
+        if (retry) return;
+        retry = setTimeout(() => {
+            retry = null;
+            connect();
+        }, 2000);
+    };
+
+    function connect() {
+        events?.close();
+        events = new EventSource('/api/events');
+
+        events.onopen = () => {
+            setOffline(false);
+            refreshTree();
+            refreshMentions();
+        };
+
+        events.onerror = () => {
+            setOffline(true);
+            events.close();
+            reconnectLater();
+        };
+
+        events.onmessage = onMessage;
+    }
+
+    const onMessage = async message => {
         let paths = [];
         try {
             paths = JSON.parse(message.data).paths ?? [];
@@ -481,6 +536,8 @@ async function createFile() {
         setStatus('Reloaded', 'ok');
         setTimeout(() => state.dirty || setStatus(''), 1500);
     };
+
+    connect();
 })();
 
 // --- agent setup -------------------------------------------------------------

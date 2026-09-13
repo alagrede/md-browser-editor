@@ -277,6 +277,10 @@ trust and nothing more.
   in the reading.
 - **One mention cannot contain another.** Overlapping instructions are a
   conversation, not an annotation.
+- **The server is a local process**, and it dies the way local processes do:
+  Ctrl+C, a closed terminal, a laptop that slept. The page stays up, so the
+  editor watches its own event stream and says so in a banner — with the command
+  to start it again — instead of letting every click fail quietly.
 - **Reload needs an open tab.** The stream is server-sent events over the same
   connection; a browser that cannot open one (or a tab left in the background by
   an aggressive power saver) simply falls back to what it had — the save
