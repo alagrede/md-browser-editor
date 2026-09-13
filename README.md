@@ -1,5 +1,7 @@
 # md-browser-editor
 
+[![npm](https://img.shields.io/npm/v/md-browser-editor?color=%232563eb&label=npm)](https://www.npmjs.com/package/md-browser-editor)
+
 Point it at a directory of markdown. It serves an explorer tree and a
 live-preview editor in your browser, and lets you leave **mentions** — a
 passage plus what you want an AI agent to do with it.
@@ -27,9 +29,52 @@ npx md-browser-editor serve ./docs --open
 That is the whole setup. No config file, no database, no build step — the
 directory you point at is the state.
 
+## Install
+
+Nothing is required: `npx` fetches the package, runs it, and leaves your
+project alone. Install it when you are tired of the wait, or when you want it
+in a `package.json` where the rest of the team will see it.
+
 ```sh
-npx md-browser-editor serve examples/docs --open   # the sample tree, from a clone
+npx md-browser-editor serve ./docs --open          # no install at all
+npm install --global md-browser-editor             # then: md-browser-editor …
+npm install --save-dev md-browser-editor           # in a project
 ```
+
+As a project dependency, wiring it into `scripts` is what makes it habitual:
+
+```json
+{
+    "scripts": {
+        "docs": "md-browser-editor serve ./docs --open",
+        "docs:mentions": "md-browser-editor mentions ./docs"
+    }
+}
+```
+
+Straight from git works too, for what has not been released yet:
+
+```sh
+npm install --global github:alagrede/md-browser-editor
+```
+
+And to hack on it rather than use it:
+
+```sh
+git clone https://github.com/alagrede/md-browser-editor.git
+cd md-browser-editor
+npm install          # CodeMirror + esbuild, both build-time only
+npm test             # 78 tests, no framework
+npx . serve examples/docs --open
+```
+
+**What lands on disk:** `bin/`, `src/`, and a single bundled `public/app.js` —
+240 kB packed, and **no runtime dependencies at all**, so there is no tree of
+transitive packages to audit or keep up to date. Node ≥ 18 is the only
+requirement, for `fetch` and `node --test`.
+
+Everything below assumes one of those; the examples use the `npx` form because
+it is the one that works before you have decided anything.
 
 ## The editor
 
@@ -127,7 +172,7 @@ last line.
 A mention is an instruction attached to a passage, stored **in the document**:
 
 ```markdown
-## Nouvelle section
+## New section
 
 <!--ai:a3f Rephrase this, too much jargon-->
 The service exposes an idempotent endpoint that reconciles divergent states.
@@ -320,14 +365,17 @@ resolves once it is listening.
 
 ## Contributing
 
+The clone-and-run commands are in [Install](#install). Two rules on top of them:
+
 ```sh
-npm install       # CodeMirror + esbuild, both build-time only
 npm test          # node --test, no framework
-npm run build     # client/ → public/app.js (commit the result)
+npm run build     # client/ → public/app.js — commit the result
 ```
 
 Anything under `client/` needs `npm run build` before it reaches the browser:
-`public/app.js` is committed on purpose so the package runs with no install.
+`public/app.js` is committed on purpose so the package runs with no install, and
+`prepublishOnly` rebuilds it anyway so a published version can never carry a
+stale bundle.
 
 ## License
 
