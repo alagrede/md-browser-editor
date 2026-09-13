@@ -2,7 +2,7 @@
 // what it has been asked to do.
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { buildTree, flattenFiles } from './tree.mjs';
+import { buildTree, flattenFiles, rootIndex } from './tree.mjs';
 import { parseMentions } from './mentions.mjs';
 
 /**
@@ -11,7 +11,8 @@ import { parseMentions } from './mentions.mjs';
  *   `file` is root-relative; `line` is 1-based, pointing at the opening marker.
  */
 export async function collectMentions(root) {
-    const files = flattenFiles(await buildTree(root));
+    const root_index = await rootIndex(root);
+    const files = [...(root_index ? [root_index] : []), ...flattenFiles(await buildTree(root))];
     const found = [];
 
     for (const relative of files) {

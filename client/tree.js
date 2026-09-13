@@ -47,8 +47,25 @@ function level(nodes, handlers, depth) {
         if (node.type === 'dir') {
             const open = openDirs.has(node.path);
             row.classList.add('tree-dir');
-            row.append(span('chevron', open ? '▾' : '▸'), span('tree-name', node.name));
-            row.onclick = () => handlers.onToggle(node.path);
+            const chevron = span('chevron', open ? '▾' : '▸');
+            row.append(chevron, span('tree-name', node.name));
+
+            // A directory that has an index.md IS a document: its row opens it,
+            // and only the chevron folds it. Without an index there is nothing
+            // to open, so the whole row toggles.
+            if (node.index) {
+                row.classList.add('tree-dir-page');
+                if (node.index === handlers.current) row.classList.add('current');
+                row.title = node.index;
+                chevron.onclick = event => {
+                    event.stopPropagation();
+                    handlers.onToggle(node.path);
+                };
+                row.onclick = () => handlers.onOpen(node.index);
+            } else {
+                row.onclick = () => handlers.onToggle(node.path);
+            }
+
             item.appendChild(row);
             if (open) item.appendChild(level(node.children ?? [], handlers, depth + 1));
         } else {

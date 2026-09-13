@@ -429,3 +429,20 @@ dialog.ask input:focus {
     color: #fff;
     font-weight: 600;
 }
+
+/* A directory that carries an index.md is a document: its name behaves like a
+   file row, while the chevron keeps folding the children. */
+.tree-dir-page .tree-name {
+    text-decoration-line: underline;
+    text-decoration-style: dotted;
+    text-decoration-color: var(--border);
+    text-underline-offset: 3px;
+}
+
+.root-name.clickable {
+    cursor: pointer;
+}
+
+.root-name.clickable:hover {
+    color: var(--accent);
+}

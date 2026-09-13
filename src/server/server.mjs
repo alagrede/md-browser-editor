@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { collectMentions } from '../collect.mjs';
 import { removeMention } from '../mentions.mjs';
 import { hrefFor, markdownTarget, mimeFor, resolveInRoot } from '../paths.mjs';
-import { buildTree } from '../tree.mjs';
+import { buildTree, rootIndex } from '../tree.mjs';
 import { renderShell } from './shell.mjs';
 
 const PUBLIC_DIR = fileURLToPath(new URL('../../public/', import.meta.url));
@@ -88,7 +88,11 @@ export async function startServer({ root, host = '127.0.0.1', port = 4830, title
 
         // --- the API -------------------------------------------------------
         if (route === '/api/tree' && request.method === 'GET') {
-            json(response, 200, { root: path.basename(root), tree: await buildTree(root) });
+            json(response, 200, {
+                root: path.basename(root),
+                index: await rootIndex(root),
+                tree: await buildTree(root),
+            });
             return;
         }
 

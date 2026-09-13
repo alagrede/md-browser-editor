@@ -46,6 +46,12 @@ and a button to cycle its alignment — the delimiter row is not reachable any
 other way once the table is rendered. Every edit is serialized straight back
 into the document, so the file stays the only state.
 
+**A directory with an `index.md` is that page.** The folder row opens it
+instead of listing it inside itself under a name that says nothing, and only
+the chevron folds the children. The same goes for the root: its `index.md` is
+what opens on arrival, and the tree's title bar opens it again. A folder whose
+only markdown is its index is still a page, not an empty folder.
+
 **Fenced code is highlighted**: JavaScript, TypeScript, JSON, CSS, HTML, shell,
 YAML, Python, SQL, XML, diff, Dockerfile and TOML. An unknown info string is not
 an error — the block simply stays plain.

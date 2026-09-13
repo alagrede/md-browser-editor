@@ -39,6 +39,7 @@ const dom = {
 
 const state = {
     tree: [],
+    rootIndex: null,
     current: null,
     dirty: false,
     saveTimer: null,
@@ -61,8 +62,20 @@ function onToggleAndRerender(path) {
 }
 
 async function refreshTree() {
-    const { tree } = await api.tree();
+    const { tree, index } = await api.tree();
     state.tree = tree;
+    state.rootIndex = index ?? null;
+
+    // Same rule as a folder's index.md, for the root: its name opens its page.
+    const rootName = document.querySelector('.root-name');
+    if (state.rootIndex) {
+        rootName.classList.add('clickable');
+        rootName.onclick = () => openFile(state.rootIndex);
+    } else {
+        rootName.classList.remove('clickable');
+        rootName.onclick = null;
+    }
+
     paintTree();
 }
 
@@ -291,13 +304,17 @@ window.addEventListener('beforeunload', event => {
 await refreshTree();
 await refreshMentions();
 
-// Open the first file so the editor is never an empty frame on arrival.
-const first = (function firstFile(nodes) {
-    for (const node of nodes) {
-        if (node.type === 'file') return node.path;
-        const found = firstFile(node.children ?? []);
-        if (found) return found;
-    }
-    return null;
-})(state.tree);
+// Open something on arrival rather than showing an empty frame — the root's
+// index page if there is one, since that is the tree's landing page.
+const first =
+    state.rootIndex ??
+    (function firstFile(nodes) {
+        for (const node of nodes) {
+            if (node.type === 'file') return node.path;
+            if (node.index) return node.index;
+            const found = firstFile(node.children ?? []);
+            if (found) return found;
+        }
+        return null;
+    })(state.tree);
 if (first) openFile(first);
