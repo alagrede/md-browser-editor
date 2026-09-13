@@ -722,3 +722,66 @@ body.panel-open #main {
     background: var(--selection);
     color: var(--selection-text);
 }
+
+/* --- editor context menu ------------------------------------------------ */
+
+.ctx-menu {
+    position: fixed;
+    z-index: 60;
+    min-width: 216px;
+    padding: 5px;
+    background: var(--bg-side);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.28);
+    font-size: 13px;
+    max-height: 90vh;
+    overflow: auto;
+}
+
+.ctx-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    width: 100%;
+    padding: 5px 9px;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.ctx-item:hover:not(:disabled) {
+    background: var(--row-current);
+}
+
+.ctx-item:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.ctx-item kbd {
+    font-family: var(--sans);
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.03em;
+}
+
+.ctx-heading {
+    padding: 7px 9px 3px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+
+.ctx-sep {
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--border);
+}

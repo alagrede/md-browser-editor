@@ -14,12 +14,13 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 // markdownLanguage, not the default base: the default is plain CommonMark,
 // which has no tables and no strikethrough — their nodes never appear in the
 // tree, so the decorations for them silently never fire.
-import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
+import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
 import { codeLanguages } from './code-languages.js';
 import { codeHighlighting } from './highlight.js';
 import { tables, tableTheme } from './table.js';
 import { frontmatter, frontmatterTheme } from './frontmatter.js';
 import { docPath } from './doc-path.js';
+import { editingKeymap, menuItems, showContextMenu } from './editing.js';
 import { api, RequestError } from './api.js';
 import { livePreview, livePreviewTheme } from './live-preview.js';
 import { editorTheme } from './theme.js';
@@ -220,6 +221,35 @@ function mountEditor(source) {
                 placeholder('Write markdown…'),
                 EditorView.lineWrapping,
                 markdown({ base: markdownLanguage, codeLanguages }),
+                // Enter continues a list or a quote instead of dropping you
+                // into a bare line — the one thing every markdown editor does.
+                keymap.of(markdownKeymap),
+                editingKeymap,
+                // Right-click: the same actions as the keyboard, named the same
+                // way. Shift-right-click still gets the browser's own menu.
+                EditorView.domEventHandlers({
+                    contextmenu(event, target) {
+                        if (event.shiftKey) return false;
+                        event.preventDefault();
+
+                        // Put the caret where the click landed, unless the
+                        // click is inside the selection — otherwise the command
+                        // you pick from the menu applies wherever the caret
+                        // happened to be, which is never where you are looking.
+                        const pos = target.posAtCoords({ x: event.clientX, y: event.clientY });
+                        const { from, to } = target.state.selection.main;
+                        if (pos !== null && (pos < from || pos > to)) {
+                            target.dispatch({ selection: { anchor: pos } });
+                        }
+
+                        showContextMenu(
+                            target,
+                            { x: event.clientX, y: event.clientY },
+                            menuItems(target, { onMention: addMention })
+                        );
+                        return true;
+                    },
+                }),
                 codeHighlighting,
                 editorTheme,
                 tables,

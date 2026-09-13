@@ -89,6 +89,19 @@ an error — the block simply stays plain.
 | Mention | select a passage, ⌘M |
 | Resolve a mention | click its pill |
 | Open a link | ⌘/Ctrl-click |
+| Format | ⌘B, ⌘I, ⌘E (code), ⌘⇧X (strikethrough), ⌘K (link) |
+| Turn into | ⌘1 ⌘2 ⌘3 (headings), ⌘⇧8 ⌘⇧7 ⌘⇧9 (bullet, numbered, task), ⌘⇧' (quote) |
+| Insert | right-click → image, table, code block, divider |
+| Everything at once | right-click anywhere in the text |
+
+Every formatting command is a **toggle**: ⌘B on bold text takes the bold off, and
+asking for a heading 2 on a heading 2 gives you a paragraph back — a command that
+only ever adds is one you undo by hand. Enter continues a list or a quote.
+
+Right-click opens the same actions, named the same way, and moves the caret to
+where you clicked first — otherwise the command lands wherever the caret
+happened to be. It replaces the browser's menu, so Cut and Copy are in it, and
+the browser's own is still one **Shift**-right-click away.
 
 Files are written back as plain markdown, with exactly one trailing newline —
 they live in git, and a missing one shows up in every diff that touches the
