@@ -246,11 +246,17 @@ async function createFile() {
 
 dom.newFile.onclick = createFile;
 dom.addMention.onclick = addMention;
-dom.showMentions.onclick = () => {
-    dom.panel.hidden = !dom.panel.hidden;
-    if (!dom.panel.hidden) refreshMentions();
-};
-dom.closeMentions.onclick = () => (dom.panel.hidden = true);
+function togglePanel(open) {
+    dom.panel.hidden = !open;
+    // The panel takes its width from the editor rather than covering it:
+    // reading a mention's quote while its passage is hidden underneath is
+    // exactly the moment you need to see both.
+    document.body.classList.toggle('panel-open', open);
+    if (open) refreshMentions();
+}
+
+dom.showMentions.onclick = () => togglePanel(dom.panel.hidden);
+dom.closeMentions.onclick = () => togglePanel(false);
 
 // ⌘S and ⌘M work even when focus is outside the editor.
 window.addEventListener('keydown', event => {

@@ -259,6 +259,10 @@ body {
     display: none;
 }
 
+body.panel-open #main {
+    margin-right: 340px;
+}
+
 #mentions-panel header {
     display: flex;
     align-items: center;
