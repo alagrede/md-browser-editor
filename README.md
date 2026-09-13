@@ -46,6 +46,14 @@ and a button to cycle its alignment — the delimiter row is not reachable any
 other way once the table is rendered. Every edit is serialized straight back
 into the document, so the file stays the only state.
 
+**Image paths are relative to their document.** `![](assets/shot.png)` in
+`guide/index.md` is served from `guide/assets/shot.png`, not from the root —
+the page URL is `/` whatever is open, so a browser left to itself resolves
+every relative path against the root, which is a quiet wrong answer in a tree
+where several folders have their own `assets/`. `../`, an already-encoded
+`%20`, and a root-absolute `/assets/…` all work; a reference that misses falls
+back once to the root before showing as broken.
+
 **Frontmatter is a Properties panel, not a heading.** A markdown parser reads
 `title: Guide` followed by `---` as a *setext heading*, so an unhandled
 frontmatter opens the document with a giant title made of its own metadata.

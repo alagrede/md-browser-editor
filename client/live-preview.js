@@ -14,6 +14,7 @@ import { Decoration, EditorView, ViewPlugin, WidgetType } from '@codemirror/view
 import { RangeSet } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import { frontmatterRange } from './frontmatter.js';
+import { assetUrl, docPath, rootAssetUrl } from './doc-path.js';
 
 /** Marks hidden by replacing them with nothing. */
 const HIDE = Decoration.replace({});
@@ -45,28 +46,41 @@ const ELEMENT_CLASS = {
 };
 
 class ImageWidget extends WidgetType {
-    constructor(url, alt) {
+    constructor(url, alt, from) {
         super();
         this.url = url;
         this.alt = alt;
+        this.from = from; // the document carrying the reference
     }
 
     eq(other) {
-        return other.url === this.url && other.alt === this.alt;
+        return other.url === this.url && other.alt === this.alt && other.from === this.from;
     }
 
     toDOM() {
         const wrap = document.createElement('span');
         wrap.className = 'cm-md-image';
         const img = document.createElement('img');
-        // Relative paths resolve against the document's own URL, the way they
-        // do in every other markdown tool — the server serves the tree.
-        img.src = this.url;
         img.alt = this.alt ?? '';
+
+        const relative = assetUrl(this.url, this.from);
+        const fromRoot = rootAssetUrl(this.url);
+
+        // Relative to the document first — that is what markdown means. A
+        // shared folder at the root is the other convention in the wild, so a
+        // miss falls back to it once before giving up.
+        let tried = false;
         img.onerror = () => {
+            if (!tried && fromRoot && fromRoot !== relative) {
+                tried = true;
+                img.src = fromRoot;
+                return;
+            }
             wrap.classList.add('cm-md-image-broken');
             wrap.textContent = `🖼 ${this.alt || this.url}`;
         };
+        img.src = relative ?? this.url;
+
         wrap.appendChild(img);
         return wrap;
     }
@@ -134,7 +148,9 @@ function buildDecorations(view) {
                         decorations.push({
                             from: node.from,
                             to: node.to,
-                            deco: Decoration.replace({ widget: new ImageWidget(url, match[1]) }),
+                            deco: Decoration.replace({
+                                widget: new ImageWidget(url, match[1], state.facet(docPath)),
+                            }),
                         });
                     }
                     return false;

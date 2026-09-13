@@ -15,6 +15,7 @@ import { codeLanguages } from './code-languages.js';
 import { codeHighlighting } from './highlight.js';
 import { tables, tableTheme } from './table.js';
 import { frontmatter, frontmatterTheme } from './frontmatter.js';
+import { docPath } from './doc-path.js';
 import { api } from './api.js';
 import { livePreview, livePreviewTheme } from './live-preview.js';
 import { editorTheme } from './theme.js';
@@ -149,6 +150,8 @@ function mountEditor(source) {
             doc: source,
             selection: { anchor: source.length },
             extensions: [
+                // Image paths are relative to THIS document, not to the page URL.
+                docPath.of(state.current ?? ''),
                 history(),
                 drawSelection(),
                 highlightActiveLine(),
