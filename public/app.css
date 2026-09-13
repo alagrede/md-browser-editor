@@ -580,3 +580,17 @@ dialog.ask input:focus {
 .root-name.clickable:hover {
     color: var(--accent);
 }
+
+.ask-content {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 18px 20px 16px;
+}
+
+.ask-body {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-dim);
+}

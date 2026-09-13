@@ -4,7 +4,7 @@
 // Saving is debounced and also bound to ⌘S. The editor never holds a document
 // the server has not confirmed: a failed save leaves the buffer dirty and says
 // so, rather than pretending.
-import { EditorState } from '@codemirror/state';
+import { Annotation, EditorState } from '@codemirror/state';
 import { EditorView, keymap, highlightActiveLine, drawSelection, placeholder } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 // markdownLanguage, not the default base: the default is plain CommonMark,
@@ -16,13 +16,13 @@ import { codeHighlighting } from './highlight.js';
 import { tables, tableTheme } from './table.js';
 import { frontmatter, frontmatterTheme } from './frontmatter.js';
 import { docPath } from './doc-path.js';
-import { api } from './api.js';
+import { api, RequestError } from './api.js';
 import { livePreview, livePreviewTheme } from './live-preview.js';
 import { editorTheme } from './theme.js';
 import { mentionsTheme, mentionsView } from './mentions-view.js';
 import { renderTree, revealFile, toggleDir } from './tree.js';
 import { insertMention } from '../src/mentions.mjs';
-import { askText } from './ask.js';
+import { askChoice, askText } from './ask.js';
 
 const dom = {
     tree: document.getElementById('tree'),
@@ -39,12 +39,24 @@ const dom = {
     closeMentions: document.getElementById('close-mentions'),
 };
 
+/**
+ * Marks a change the editor made to itself — a reload from disk, a resolved
+ * mention — as opposed to something typed. Without it the update listener sees
+ * "the document changed", flags the buffer dirty and saves it straight back:
+ * every external edit came home as a write, which is exactly the echo an agent
+ * rewriting files does not need.
+ */
+const fromDisk = Annotation.define();
+
 const state = {
     tree: [],
     rootIndex: null,
     current: null,
     dirty: false,
     saveTimer: null,
+    // The mtime the open document had when it was read. Sent back on save, so
+    // a file rewritten under us is refused instead of flattened.
+    mtime: 0,
 };
 
 let view = null;
@@ -133,14 +145,55 @@ async function save() {
     clearTimeout(state.saveTimer);
     const source = view.state.doc.toString();
     try {
-        await api.save(state.current, source);
+        const { mtime } = await api.save(state.current, source, state.mtime);
+        state.mtime = mtime;
         state.dirty = false;
         setStatus('Saved', 'ok');
         setTimeout(() => state.dirty || setStatus(''), 1200);
         refreshMentions();
     } catch (error) {
+        if (error instanceof RequestError && error.payload?.conflict) {
+            await resolveConflict(error.payload);
+            return;
+        }
         setStatus(error.message, 'error');
     }
+}
+
+/**
+ * The file changed on disk while this tab held unsaved edits — an agent
+ * applying mentions, a git pull, another tab. Neither side may be thrown away
+ * silently, so it is a question, and the answer decides which one survives.
+ */
+async function resolveConflict(payload) {
+    setStatus('Changed on disk', 'error');
+    const keepMine = await askChoice({
+        title: 'This file changed on disk',
+        body:
+            'Something else rewrote it while you had unsaved edits here — an agent applying mentions, ' +
+            'a git pull, another tab. Keep your version, or take the one on disk?',
+        confirm: 'Keep my version',
+        cancel: 'Take the disk version',
+    });
+
+    if (keepMine === null) return; // dismissed: nothing decided, nothing lost
+
+    if (keepMine) {
+        // Adopting their mtime is what makes the next save go through.
+        state.mtime = payload.mtime;
+        state.dirty = true;
+        await save();
+        return;
+    }
+
+    view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: payload.source },
+        annotations: fromDisk.of(true),
+    });
+    state.mtime = payload.mtime;
+    state.dirty = false;
+    setStatus('Reloaded from disk', 'ok');
+    refreshMentions();
 }
 
 function mountEditor(source) {
@@ -177,7 +230,7 @@ function mountEditor(source) {
                     ...historyKeymap,
                 ]),
                 EditorView.updateListener.of(update => {
-                    if (update.docChanged) {
+                    if (update.docChanged && !update.transactions.some(tr => tr.annotation(fromDisk))) {
                         state.dirty = true;
                         setStatus('Editing…');
                         scheduleSave();
@@ -195,8 +248,9 @@ function mountEditor(source) {
 async function openFile(path) {
     if (state.dirty) await save();
     try {
-        const { source } = await api.read(path);
+        const { source, mtime } = await api.read(path);
         state.current = path;
+        state.mtime = mtime;
         state.dirty = false;
         dom.currentPath.textContent = path;
         dom.emptyState.hidden = true;
@@ -240,7 +294,12 @@ async function resolveMention(id) {
     if (state.dirty) await save();
     try {
         const { source } = await api.resolveMention(state.current, id);
-        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: source } });
+        view.dispatch({
+            changes: { from: 0, to: view.state.doc.length, insert: source },
+            annotations: fromDisk.of(true),
+        });
+        const fresh = await api.read(state.current);
+        state.mtime = fresh.mtime;
         state.dirty = false;
         setStatus('Mention resolved', 'ok');
         refreshMentions();
@@ -264,7 +323,8 @@ async function createFile() {
     const title = target.split('/').pop().replace(/\.md$/i, '');
 
     try {
-        await api.create(target, `# ${title}\n\n`);
+        const created = await api.create(target, `# ${title}\n\n`);
+        state.mtime = created.mtime;
         await refreshTree();
         await openFile(target);
         setStatus('Created', 'ok');
@@ -326,6 +386,54 @@ async function createFile() {
             /* ditto */
         }
     });
+})();
+
+// --- what the agent does, seen from here -------------------------------------
+// The server streams one event per burst of filesystem activity. A document
+// nobody is editing here reloads itself; one with unsaved edits says so and
+// leaves the choice to the save, which will be refused with both versions.
+(function liveReload() {
+    if (typeof EventSource === 'undefined') return;
+    const events = new EventSource('/api/events');
+
+    events.onmessage = async message => {
+        let paths = [];
+        try {
+            paths = JSON.parse(message.data).paths ?? [];
+        } catch {
+            return;
+        }
+
+        // An empty list means "something moved, I cannot say what".
+        const touchesOpen = state.current && (paths.length === 0 || paths.includes(state.current));
+
+        refreshTree();
+        refreshMentions();
+
+        if (!touchesOpen || !view) return;
+        if (state.dirty) {
+            setStatus('Changed on disk — your version is still here', 'error');
+            return;
+        }
+
+        const { source, mtime } = await api.read(state.current).catch(() => ({}));
+        if (source === undefined || source === view.state.doc.toString()) {
+            if (mtime) state.mtime = mtime;
+            return;
+        }
+
+        // Keep the caret where it was rather than jumping to the top.
+        const caret = Math.min(view.state.selection.main.head, source.length);
+        view.dispatch({
+            changes: { from: 0, to: view.state.doc.length, insert: source },
+            selection: { anchor: caret },
+            annotations: fromDisk.of(true),
+        });
+        state.mtime = mtime;
+        state.dirty = false;
+        setStatus('Reloaded', 'ok');
+        setTimeout(() => state.dirty || setStatus(''), 1500);
+    };
 })();
 
 dom.newFile.onclick = createFile;

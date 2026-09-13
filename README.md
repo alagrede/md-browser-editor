@@ -114,6 +114,18 @@ where it applies, it survives a rename, and it shows up in a `git diff`.
 In the editor the markers fold away: you see the passage highlighted, with the
 instruction as a pill. Click the pill to resolve it.
 
+### While an agent is working
+
+The editor follows the files. A document you are not editing **reloads itself**
+when something rewrites it, and the tree and the mention count follow — so an
+agent applying mentions is watched live, markers disappearing one by one.
+
+If you *were* editing it, nothing is thrown away: the save is **refused** by the
+server (the browser sends back the mtime it read), and you are asked which
+version survives, with both in hand. That refusal is the point — without it,
+whoever wrote last would win silently, and it would usually be the editor
+flushing a buffer that predates the agent's work.
+
 ### What an agent does with them
 
 ```sh
@@ -150,6 +162,12 @@ A prompt for Claude Code, or any agent that can read files, fits in a sentence:
 
 > Run `md-browser-editor mentions . --json`, apply each instruction to the
 > passage between its markers, then remove that mention's markers.
+
+For Claude Code, `.claude/commands/mentions.md` in this repository is that
+prompt as a slash command — copy it next to your documents and the whole loop
+becomes `/mentions`. It carries the rules that matter: change nothing outside
+the marked passages, keep the document's language, report an unterminated
+marker instead of guessing its extent, and leave the work as a diff.
 
 ## The commands
 
@@ -211,6 +229,10 @@ trust and nothing more.
   in the reading.
 - **One mention cannot contain another.** Overlapping instructions are a
   conversation, not an annotation.
+- **Reload needs an open tab.** The stream is server-sent events over the same
+  connection; a browser that cannot open one (or a tab left in the background by
+  an aggressive power saver) simply falls back to what it had — the save
+  refusal still protects the file.
 - **No rename, move or delete** from the browser. Those belong to your file
   manager and your git history, and a mis-click here would be silent.
 

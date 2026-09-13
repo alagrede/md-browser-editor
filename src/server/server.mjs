@@ -15,6 +15,7 @@ import { removeMention } from '../mentions.mjs';
 import { hrefFor, markdownTarget, mimeFor, resolveInRoot } from '../paths.mjs';
 import { buildTree, rootIndex } from '../tree.mjs';
 import { renderShell } from './shell.mjs';
+import { watchTree } from './watch.mjs';
 
 const PUBLIC_DIR = fileURLToPath(new URL('../../public/', import.meta.url));
 
@@ -63,6 +64,14 @@ function readBody(request, limit = 8 * 1024 * 1024) {
  */
 export async function startServer({ root, host = '127.0.0.1', port = 4830, title }) {
     const documentTitle = title ?? path.basename(root);
+
+    /** Open event streams. The watcher only runs while at least one is open. */
+    const listeners = new Set();
+    let watcher = null;
+
+    const ensureWatching = () => {
+        if (!watcher) watcher = watchTree(root, paths => listeners.forEach(stream => stream.send(paths)));
+    };
 
     async function handle(request, response) {
         const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`);
@@ -126,6 +135,24 @@ export async function startServer({ root, host = '127.0.0.1', port = 4830, title
                     return void json(response, 404, { error: 'No such file — create it first.' });
                 }
 
+                // The editor sends back the mtime it read. If the file moved
+                // since — an agent rewriting it, a git pull, another tab — the
+                // save is refused rather than flattening that work. The current
+                // content comes back with the refusal so the browser can show
+                // both sides without a second request.
+                const known = Number(url.searchParams.get('mtime') ?? 0);
+                if (!creating && known) {
+                    const current = await stat(target);
+                    if (Math.abs(current.mtimeMs - known) > 1) {
+                        return void json(response, 409, {
+                            error: 'The file changed on disk since you opened it.',
+                            conflict: true,
+                            mtime: current.mtimeMs,
+                            source: await readFile(target, 'utf8'),
+                        });
+                    }
+                }
+
                 const body = await readBody(request);
                 // Exactly one trailing newline, whatever the editor sent: these
                 // files live in git, and a missing one shows up as a "\ No
@@ -152,6 +179,34 @@ export async function startServer({ root, host = '127.0.0.1', port = 4830, title
             const next = removeMention(source, id);
             if (next !== source) await writeFile(target, next, 'utf8');
             json(response, 200, { path: url.searchParams.get('path'), source: next });
+            return;
+        }
+
+        // Server-sent events: one line per burst of filesystem activity. The
+        // browser reloads a document it has not touched, and refreshes the tree
+        // and the mention count.
+        if (route === '/api/events' && request.method === 'GET') {
+            response.writeHead(200, {
+                'Content-Type': 'text/event-stream; charset=utf-8',
+                'Cache-Control': 'no-store',
+                Connection: 'keep-alive',
+            });
+            response.write(`retry: 2000\n\n`);
+
+            const stream = {
+                send: paths => response.write(`data: ${JSON.stringify({ paths })}\n\n`),
+                end: () => response.end(),
+            };
+            listeners.add(stream);
+            ensureWatching();
+
+            // A comment every 25s keeps proxies and idle timeouts from closing
+            // a stream that is doing its job by staying silent.
+            const beat = setInterval(() => response.write(': ping\n\n'), 25000);
+            request.on('close', () => {
+                clearInterval(beat);
+                listeners.delete(stream);
+            });
             return;
         }
 
@@ -208,6 +263,14 @@ export async function startServer({ root, host = '127.0.0.1', port = 4830, title
         port: port_,
         url: `http://${host}:${port_}/`,
         href: file => hrefFor(root, file),
-        close: () => new Promise(resolve => server.close(resolve)),
+        close: () =>
+            new Promise(resolve => {
+                watcher?.stop();
+                // Close the streams, or the server keeps a live socket per
+                // open tab and never finishes closing.
+                for (const stream of listeners) stream.end();
+                listeners.clear();
+                server.close(resolve);
+            }),
     };
 }

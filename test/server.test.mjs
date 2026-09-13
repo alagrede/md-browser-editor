@@ -92,3 +92,67 @@ test('assets are served from an allowlist, other types are not', async () => {
     assert.equal((await call('/script.js')).status, 404);
     assert.equal((await call('/.secrets/token.md')).status, 404);
 });
+
+// --- saving over someone else's work ----------------------------------------
+//
+// The case: an agent applies the mentions of a file this editor has open with
+// unsaved edits. Whoever writes last would win silently — so the write is
+// refused, and both versions come back for the browser to choose from.
+
+test('a save is refused when the file moved since it was read', async () => {
+    writeFileSync(path.join(root, 'race.md'), '# Avant\n');
+    const opened = await (await call('/api/file?path=race.md')).json();
+
+    // Something else rewrites it (an agent, a git pull, another tab).
+    await new Promise(resolve => setTimeout(resolve, 10));
+    writeFileSync(path.join(root, 'race.md'), '# Écrit par quelqu’un d’autre\n');
+
+    const refused = await call(`/api/file?path=race.md&mtime=${opened.mtime}`, {
+        method: 'PUT',
+        body: '# Ma version\n',
+    });
+    assert.equal(refused.status, 409);
+
+    const payload = await refused.json();
+    assert.equal(payload.conflict, true);
+    assert.match(payload.source, /quelqu’un d’autre/, 'the current content comes back with the refusal');
+    assert.match(readFileSync(path.join(root, 'race.md'), 'utf8'), /quelqu’un d’autre/, 'nothing was overwritten');
+
+    // Saving against the mtime it reported goes through: that is how the
+    // browser says "I have seen theirs, keep mine".
+    const accepted = await call(`/api/file?path=race.md&mtime=${payload.mtime}`, {
+        method: 'PUT',
+        body: '# Ma version\n',
+    });
+    assert.equal(accepted.status, 200);
+    assert.equal(readFileSync(path.join(root, 'race.md'), 'utf8'), '# Ma version\n');
+});
+
+test('a save with no mtime is taken as written — scripts have no buffer to lose', async () => {
+    writeFileSync(path.join(root, 'script.md'), '# A\n');
+    const response = await call('/api/file?path=script.md', { method: 'PUT', body: '# B\n' });
+    assert.equal(response.status, 200);
+    assert.equal(readFileSync(path.join(root, 'script.md'), 'utf8'), '# B\n');
+});
+
+test('the event stream reports a file changing under the editor', async () => {
+    const response = await call('/api/events');
+    assert.equal(response.headers.get('content-type'), 'text/event-stream; charset=utf-8');
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    // Give the watcher a moment to attach before touching the tree.
+    await new Promise(resolve => setTimeout(resolve, 150));
+    writeFileSync(path.join(root, 'watched.md'), '# Watched\n');
+
+    const deadline = Date.now() + 5000;
+    let seen = '';
+    while (Date.now() < deadline && !seen.includes('watched.md')) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        seen += decoder.decode(value, { stream: true });
+    }
+    await reader.cancel();
+
+    assert.match(seen, /watched\.md/, 'the changed path reaches the browser');
+});

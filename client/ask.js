@@ -80,3 +80,52 @@ export function askText({ title, label, value = '', placeholder = '', confirm = 
         input.select();
     });
 }
+
+/**
+ * A question with two ways out and no text to type. Returns true for the
+ * primary choice, false for the other, null when dismissed.
+ *
+ * @param {{title: string, body: string, confirm: string, cancel: string}} options
+ */
+export function askChoice({ title, body, confirm, cancel }) {
+    return new Promise(resolve => {
+        const dialog = document.createElement('dialog');
+        dialog.className = 'ask';
+
+        const heading = document.createElement('h2');
+        heading.textContent = title;
+        const text = document.createElement('p');
+        text.className = 'ask-body';
+        text.textContent = body;
+
+        const actions = document.createElement('div');
+        actions.className = 'ask-actions';
+        const no = document.createElement('button');
+        no.type = 'button';
+        no.className = 'button';
+        no.textContent = cancel;
+        const yes = document.createElement('button');
+        yes.type = 'button';
+        yes.className = 'button primary';
+        yes.textContent = confirm;
+        actions.append(no, yes);
+
+        const wrap = document.createElement('div');
+        wrap.className = 'ask-content';
+        wrap.append(heading, text, actions);
+        dialog.appendChild(wrap);
+        document.body.appendChild(dialog);
+
+        const close = answer => {
+            dialog.close();
+            dialog.remove();
+            resolve(answer);
+        };
+        no.onclick = () => close(false);
+        yes.onclick = () => close(true);
+        dialog.addEventListener('cancel', () => close(null));
+
+        dialog.showModal();
+        yes.focus();
+    });
+}
