@@ -97,3 +97,25 @@ test('a selection that swallows its trailing newline still wraps cleanly', () =>
     const { source: annotated } = insertMention(source, from, from + 'ligne\n'.length, 'Corrige');
     assert.match(annotated, /ligne<!--\/ai:[a-z0-9]+-->\napres/);
 });
+
+// --- collecting across a tree ------------------------------------------------
+
+test('a mention is reported once, even in the root index page', async () => {
+    // The root's index.md is both the tree's landing page and a file of the
+    // tree; counting it from both places listed its mentions twice.
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const { collectMentions } = await import('../src/collect.mjs');
+
+    const root = mkdtempSync(path.join(os.tmpdir(), 'md-collect-'));
+    mkdirSync(path.join(root, 'guide'));
+    writeFileSync(path.join(root, 'index.md'), '# Accueil\n\n<!--ai:a1 Reformule-->texte<!--/ai:a1-->\n');
+    writeFileSync(path.join(root, 'guide/index.md'), '# Guide\n\n<!--ai:b2 Résume-->autre<!--/ai:b2-->\n');
+
+    const mentions = await collectMentions(root);
+    assert.deepEqual(
+        mentions.map(mention => `${mention.file}:${mention.id}`).sort(),
+        ['guide/index.md:b2', 'index.md:a1']
+    );
+});

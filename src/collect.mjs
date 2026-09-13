@@ -11,8 +11,11 @@ import { parseMentions } from './mentions.mjs';
  *   `file` is root-relative; `line` is 1-based, pointing at the opening marker.
  */
 export async function collectMentions(root) {
-    const root_index = await rootIndex(root);
-    const files = [...(root_index ? [root_index] : []), ...flattenFiles(await buildTree(root))];
+    // The root's index.md keeps its own row in the tree, so flattenFiles already
+    // has it: adding it again listed every one of its mentions twice, and made
+    // the count say two where there was one.
+    const rootPage = await rootIndex(root);
+    const files = [...new Set([...(rootPage ? [rootPage] : []), ...flattenFiles(await buildTree(root))])];
     const found = [];
 
     for (const relative of files) {
