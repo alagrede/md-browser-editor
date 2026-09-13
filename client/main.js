@@ -84,6 +84,7 @@ async function refreshTree() {
 async function refreshMentions() {
     const { mentions } = await api.mentions();
     dom.mentionCount.textContent = String(mentions.length);
+    dom.showMentions.classList.toggle('has-mentions', mentions.length > 0);
     dom.panelList.textContent = '';
 
     if (!mentions.length) {
@@ -271,6 +272,61 @@ async function createFile() {
         setStatus(error.message, 'error');
     }
 }
+
+// --- a sidebar you can widen -------------------------------------------------
+// Document titles are what the tree shows now, and a real title ("Liste des
+// demandes de réservation") does not fit a fixed 280px. The width is the
+// reader's call, and it is remembered per browser.
+(function resizableSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const handle = document.createElement('div');
+    handle.className = 'sidebar-handle';
+    handle.title = 'Drag to resize — double-click to reset';
+    sidebar.appendChild(handle);
+
+    const MIN = 200;
+    const MAX = 560;
+    const apply = width => {
+        const clamped = Math.min(MAX, Math.max(MIN, width));
+        sidebar.style.flex = `0 0 ${clamped}px`;
+        sidebar.style.width = `${clamped}px`;
+        return clamped;
+    };
+
+    try {
+        const saved = Number(localStorage.getItem('md-browser-editor.sidebar'));
+        if (saved) apply(saved);
+    } catch {
+        /* private window, or storage disabled: the default width is fine */
+    }
+
+    handle.addEventListener('mousedown', event => {
+        event.preventDefault();
+        document.body.classList.add('resizing');
+        const move = moveEvent => apply(moveEvent.clientX);
+        const up = upEvent => {
+            document.body.classList.remove('resizing');
+            window.removeEventListener('mousemove', move);
+            window.removeEventListener('mouseup', up);
+            try {
+                localStorage.setItem('md-browser-editor.sidebar', String(apply(upEvent.clientX)));
+            } catch {
+                /* nothing to remember it with */
+            }
+        };
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+    });
+
+    handle.addEventListener('dblclick', () => {
+        apply(280);
+        try {
+            localStorage.removeItem('md-browser-editor.sidebar');
+        } catch {
+            /* ditto */
+        }
+    });
+})();
 
 dom.newFile.onclick = createFile;
 dom.addMention.onclick = addMention;

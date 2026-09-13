@@ -19,7 +19,9 @@
     --mention-border: #f0c674;
     --mention-highlight: rgba(250, 204, 21, 0.22);
     --row-hover: rgba(0, 0, 0, 0.05);
-    --row-current: rgba(37, 99, 235, 0.12);
+    --row-current: rgba(37, 99, 235, 0.10);
+    --tree-guide: rgba(0, 0, 0, 0.09);
+    --tree-icon: #98a2b3;
     --selection: rgba(37, 99, 235, 0.22);
 
     --syn-comment: #6b7280;
@@ -48,8 +50,10 @@
         --mention-fg: #fcd34d;
         --mention-border: #6b5420;
         --mention-highlight: rgba(252, 211, 77, 0.16);
-        --row-hover: rgba(255, 255, 255, 0.06);
-        --row-current: rgba(110, 168, 254, 0.18);
+        --row-hover: rgba(255, 255, 255, 0.055);
+        --row-current: rgba(110, 168, 254, 0.14);
+        --tree-guide: rgba(255, 255, 255, 0.10);
+        --tree-icon: #6b7688;
         --selection: rgba(110, 168, 254, 0.28);
 
         --syn-comment: #7a8494;
@@ -86,8 +90,9 @@ body {
 /* --- sidebar ---------------------------------------------------------- */
 
 #sidebar {
-    width: 260px;
-    flex: 0 0 260px;
+    position: relative;
+    width: 280px;
+    flex: 0 0 280px;
     background: var(--bg-side);
     border-right: 1px solid var(--border);
     display: flex;
@@ -100,7 +105,7 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 12px;
+    padding: 12px 14px;
     border-bottom: 1px solid var(--border);
 }
 
@@ -108,12 +113,18 @@ body {
     border-bottom: 0;
     border-top: 1px solid var(--border);
     margin-top: auto;
+    padding: 10px 14px;
 }
 
+/* The served directory's name: a label above the tree, not a title competing
+   with the documents under it. */
 .root-name {
-    font-weight: 650;
-    font-size: 13px;
     flex: 1;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-dim);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -121,9 +132,21 @@ body {
 
 #tree {
     overflow: auto;
-    padding: 6px 0;
+    overflow-x: hidden;
+    padding: 8px 8px 16px;
     flex: 1;
     min-height: 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+#tree::-webkit-scrollbar {
+    width: 8px;
+}
+
+#tree::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
 }
 
 .tree-level {
@@ -132,37 +155,94 @@ body {
     padding: 0;
 }
 
+/* One guide line per level of nesting: the indent alone left deep trees
+   ambiguous, and a guide costs nothing to read. */
+.tree-nested {
+    margin-left: 15px;
+    padding-left: 5px;
+    border-left: 1px solid var(--tree-guide);
+}
+
 .tree-row {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 7px;
     width: 100%;
-    padding: 4px 10px;
+    padding: 5px 8px;
     border: 0;
     background: none;
-    color: inherit;
+    color: var(--text);
     font: inherit;
     font-size: 13px;
+    line-height: 1.35;
     text-align: left;
     cursor: pointer;
-    border-radius: 6px;
+    border-radius: 7px;
+    transition: background-color 90ms ease;
 }
 
 .tree-row:hover {
     background: var(--row-hover);
 }
 
+.tree-row:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+/* The open document: tinted, a little heavier, and marked by an accent bar —
+   the tint alone was a wide block of color for one row. */
 .tree-row.current {
     background: var(--row-current);
     font-weight: 600;
 }
 
-.chevron,
-.tree-icon {
-    width: 12px;
-    font-size: 10px;
-    color: var(--text-dim);
+.tree-row.current::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 5px;
+    bottom: 5px;
+    width: 2px;
+    border-radius: 2px;
+    background: var(--accent);
+}
+
+.tree-row.current .tree-icon {
+    color: var(--accent);
+}
+
+.tree-twisty {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
     flex-shrink: 0;
+    color: var(--tree-icon);
+    border-radius: 3px;
+    transition: transform 120ms ease;
+}
+
+.tree-twisty:hover {
+    color: var(--text);
+    background: var(--row-hover);
+}
+
+.tree-row.open .tree-twisty {
+    transform: rotate(90deg);
+}
+
+.tree-twisty-empty {
+    pointer-events: none;
+}
+
+.tree-icon {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    color: var(--tree-icon);
 }
 
 .tree-name {
@@ -171,7 +251,42 @@ body {
     white-space: nowrap;
 }
 
+/* A plain folder is a container, not a document: it reads a notch quieter. */
+.tree-dir-plain .tree-name {
+    color: var(--text-dim);
+}
+
+.tree-dir-plain:hover .tree-name {
+    color: var(--text);
+}
+
 /* --- main ------------------------------------------------------------- */
+
+/* The grab strip sits on the border itself: 5px of target, 1px of paint. */
+.sidebar-handle {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 5;
+}
+
+.sidebar-handle:hover,
+body.resizing .sidebar-handle {
+    background: linear-gradient(to right, transparent 2px, var(--accent) 2px, var(--accent) 4px, transparent 4px);
+}
+
+/* While dragging, nothing else should take the pointer or start selecting. */
+body.resizing {
+    cursor: col-resize;
+    user-select: none;
+}
+
+body.resizing #editor {
+    pointer-events: none;
+}
 
 #main {
     flex: 1;
@@ -238,6 +353,34 @@ body {
 
 .link-button:hover {
     color: var(--accent);
+}
+
+#show-mentions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+}
+
+#mention-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
+}
+
+#show-mentions.has-mentions #mention-count {
+    background: var(--mention-bg);
+    border-color: var(--mention-border);
+    color: var(--mention-fg);
 }
 
 .button:disabled {
@@ -428,15 +571,6 @@ dialog.ask input:focus {
     border-color: var(--accent);
     color: #fff;
     font-weight: 600;
-}
-
-/* A directory that carries an index.md is a document: its name behaves like a
-   file row, while the chevron keeps folding the children. */
-.tree-dir-page .tree-name {
-    text-decoration-line: underline;
-    text-decoration-style: dotted;
-    text-decoration-color: var(--border);
-    text-underline-offset: 3px;
 }
 
 .root-name.clickable {

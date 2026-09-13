@@ -68,6 +68,10 @@ flattened into something that looks right and is not.
 name: a numeric prefix is the only lever an author has left once file names
 stop being displayed.
 
+The sidebar is **resizable** — drag its edge, double-click to reset. Real
+document titles are long, and 280px was a guess; the width is remembered per
+browser.
+
 **A directory with an `index.md` is that page.** The folder row opens it
 instead of listing it inside itself under a name that says nothing, and only
 the chevron folds the children. The same goes for the root: its `index.md` is
