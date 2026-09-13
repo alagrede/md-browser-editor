@@ -1,0 +1,191 @@
+# md-browser-editor
+
+Point it at a directory of markdown. It serves an explorer tree and a
+live-preview editor in your browser, and lets you leave **mentions** — a
+passage plus what you want an AI agent to do with it.
+
+```
+docs/                 ──serve──▶   tree + editor in the browser
+  guide/page.md                          │
+                                         │  select a passage, ⌘M
+                                         ▼
+                          <!--ai:a3f Reformule ça-->…<!--/ai:a3f-->
+                                         │
+                         mentions --json │  an agent reads, edits, resolves
+```
+
+**Node ≥ 18, and no runtime dependencies.** The server imports only `node:*`
+builtins; CodeMirror is bundled into a single committed file, so `npx` works
+with nothing to install and nothing to fetch.
+
+## Quickstart
+
+```sh
+npx md-browser-editor serve ./docs --open
+```
+
+That is the whole setup. No config file, no database, no build step — the
+directory you point at is the state.
+
+```sh
+npx md-browser-editor serve examples/docs --open   # the sample tree, from a clone
+```
+
+## The editor
+
+One pane, in live preview: markdown renders in place, and the source of
+whatever the caret sits in comes back so it stays editable — headings, bold,
+italics, inline code, links, images, quotes, lists, rules. It is the
+Obsidian/Znote model rather than a split view, because reading and editing the
+same words in the same place is the point.
+
+| | |
+| --- | --- |
+| Save | automatic, ~1s after you stop typing — or ⌘S |
+| New file | ＋ in the sidebar, path relative to the served directory |
+| Mention | select a passage, ⌘M |
+| Resolve a mention | click its pill |
+| Open a link | ⌘/Ctrl-click |
+
+Files are written back as plain markdown, with exactly one trailing newline —
+they live in git, and a missing one shows up in every diff that touches the
+last line.
+
+## Mentions
+
+A mention is an instruction attached to a passage, stored **in the document**:
+
+```markdown
+## Nouvelle section
+
+<!--ai:a3f Reformule ça, trop jargonneux-->
+Le service expose un endpoint idempotent qui réconcilie les états divergents.
+<!--/ai:a3f-->
+```
+
+HTML comments render as nothing, here and in every other markdown tool. Keeping
+them in the file rather than in a sidecar buys four things: the anchor never
+drifts (the text moves, its markers move with it), the instruction sits exactly
+where it applies, it survives a rename, and it shows up in a `git diff`.
+
+In the editor the markers fold away: you see the passage highlighted, with the
+instruction as a pill. Click the pill to resolve it.
+
+### What an agent does with them
+
+```sh
+md-browser-editor mentions ./docs            # human-readable
+md-browser-editor mentions ./docs --json     # for an agent
+```
+
+```json
+{
+  "root": "/home/you/project/docs",
+  "mentions": [
+    {
+      "file": "guide/page.md",
+      "id": "a3f",
+      "prompt": "Reformule ça, trop jargonneux",
+      "text": "Le service expose un endpoint idempotent…",
+      "line": 14,
+      "unterminated": false
+    }
+  ]
+}
+```
+
+The contract is three steps: **read** the mentions, **edit** the passage between
+the markers, **drop** the markers to say it is done — either by deleting the two
+comments or with:
+
+```sh
+md-browser-editor mentions ./docs --resolve a3f
+md-browser-editor mentions ./docs --resolve-all
+```
+
+A prompt for Claude Code, or any agent that can read files, fits in a sentence:
+
+> Run `md-browser-editor mentions . --json`, apply each instruction to the
+> passage between its markers, then remove that mention's markers.
+
+## The commands
+
+| Command | What it does |
+| --- | --- |
+| `serve [dir]` | serve the tree and the editor (default: the current directory) |
+| `mentions [dir]` | list, filter or resolve the mentions |
+
+```
+serve     --port <n>   port to listen on (default 4830; incremented if busy)
+          --host <h>   interface to bind (default 127.0.0.1)
+          --open       open the browser once listening
+
+mentions  --json           machine-readable output
+          --file <path>    only that file's mentions
+          --resolve <id>   drop one mention's markers, keeping its text
+          --resolve-all    drop every mention's markers
+```
+
+`--help` on either prints the same. Unknown options are refused rather than
+ignored — a silently swallowed typo is how you end up serving the wrong
+directory.
+
+## What it will not do
+
+The server binds `127.0.0.1`, and the rules below are the reason it is
+comfortable to run over a directory you care about:
+
+- **Writes are markdown only.** The write endpoints refuse any path that is not
+  a `.md` under the served root — no dropping a `.js`, an `.html` or a
+  `.command` next to your documents.
+- **Reads are an allowlist.** Images, PDF, JSON, txt and csv are served; an
+  unknown extension is a 404, never an `application/octet-stream` download of
+  whatever it happens to be.
+- **Dotted segments are refused** on every path, in or out, so `.env`, `.git/`
+  and `.ssh/` stay unreachable whatever the root is.
+- **No code execution.** No plugins, no shell, no eval — fenced code blocks are
+  text that gets a background.
+
+There is no authentication, so `--host 0.0.0.0` is for a demo on a network you
+trust and nothing more.
+
+## Accepted limits
+
+- **Tables stay as source.** Rendering them in a live-preview editor means
+  making them editable in place, which is a project of its own.
+- **Fenced code has no syntax highlighting** — it gets the block styling and is
+  left alone. Adding it means shipping a language pack per language.
+- **One mention cannot contain another.** Overlapping instructions are a
+  conversation, not an annotation.
+- **No rename, move or delete** from the browser. Those belong to your file
+  manager and your git history, and a mis-click here would be silent.
+
+## Use it as a library
+
+Everything the CLI and the editor use is exported, and the mention functions
+are pure string → string:
+
+```js
+import { parseMentions, insertMention, removeMention, collectMentions } from 'md-browser-editor';
+
+const { id, source } = insertMention(markdown, from, to, 'Résume cette partie');
+const pending = await collectMentions('./docs');
+```
+
+`startServer({ root, port, host })` gives the same server the CLI runs, and
+resolves once it is listening.
+
+## Contributing
+
+```sh
+npm install       # CodeMirror + esbuild, both build-time only
+npm test          # node --test, no framework
+npm run build     # client/ → public/app.js (commit the result)
+```
+
+Anything under `client/` needs `npm run build` before it reaches the browser:
+`public/app.js` is committed on purpose so the package runs with no install.
+
+## License
+
+MIT

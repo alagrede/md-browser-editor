@@ -1,0 +1,6 @@
+node_modules/
+*.log
+.DS_Store
+
+# public/app.js is NOT ignored: the bundle is committed on purpose, so the
+# package runs with no install step. Rebuild it with `npm run build`.
