@@ -22,7 +22,7 @@ const BODY = `A mention is an instruction attached to a passage, stored in the d
 itself as a pair of HTML comments:
 
 \`\`\`markdown
-<!--ai:a3f Reformule ça, trop jargonneux-->
+<!--ai:a3f Rephrase this, too much jargon-->
 …the passage it applies to…
 <!--/ai:a3f-->
 \`\`\`
@@ -43,7 +43,8 @@ Rules:
 
 - Change nothing outside the marked passages. A mention is not an invitation to
   tidy the rest of the document.
-- Keep the document's language: answer in the language the passage is written in.
+- Keep the document's language: the instruction may be written in any language,
+  and it is the passage's language that decides the answer's.
 - A mention reported as \`unterminated\` has an opening marker and no closing one,
   so it annotates nothing. Do not guess its extent — report it and move on.
 - If a prompt is ambiguous enough that two readings would produce different text,

@@ -1,8 +1,8 @@
 // Mentions: a passage of a document, plus what you want an AI agent to do with
 // it. They live IN the markdown, as HTML comments around the passage:
 //
-//     <!--ai:a3f Reformule ça, trop jargonneux-->
-//     Le service expose un endpoint idempotent…
+//     <!--ai:a3f Rephrase this, too much jargon-->
+//     The service exposes an idempotent endpoint…
 //     <!--/ai:a3f-->
 //
 // Why in the document rather than in a sidecar: the anchor never drifts (the

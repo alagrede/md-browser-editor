@@ -9,7 +9,7 @@ docs/                 ──serve──▶   tree + editor in the browser
   guide/page.md                          │
                                          │  select a passage, ⌘M
                                          ▼
-                          <!--ai:a3f Reformule ça-->…<!--/ai:a3f-->
+                          <!--ai:a3f Rephrase this-->…<!--/ai:a3f-->
                                          │
                          mentions --json │  an agent reads, edits, resolves
 ```
@@ -101,8 +101,8 @@ A mention is an instruction attached to a passage, stored **in the document**:
 ```markdown
 ## Nouvelle section
 
-<!--ai:a3f Reformule ça, trop jargonneux-->
-Le service expose un endpoint idempotent qui réconcilie les états divergents.
+<!--ai:a3f Rephrase this, too much jargon-->
+The service exposes an idempotent endpoint that reconciles divergent states.
 <!--/ai:a3f-->
 ```
 
@@ -113,6 +113,11 @@ where it applies, it survives a rename, and it shows up in a `git diff`.
 
 In the editor the markers fold away: you see the passage highlighted, with the
 instruction as a pill. Click the pill to resolve it.
+
+The instruction is free text, in whatever language you think in —
+`<!--ai:b7 Résume ça en deux phrases-->` is as good as the English above, and
+the contract tells the agent to answer in the language of the *passage*, not of
+the instruction.
 
 ### While an agent is working
 
@@ -140,8 +145,8 @@ md-browser-editor mentions ./docs --json     # for an agent
     {
       "file": "guide/page.md",
       "id": "a3f",
-      "prompt": "Reformule ça, trop jargonneux",
-      "text": "Le service expose un endpoint idempotent…",
+      "prompt": "Rephrase this, too much jargon",
+      "text": "The service exposes an idempotent endpoint…",
       "line": 14,
       "unterminated": false
     }

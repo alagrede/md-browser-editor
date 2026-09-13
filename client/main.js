@@ -284,9 +284,12 @@ async function addMention() {
     const prompt = await askText({
         title: 'Mention for an agent',
         label: 'What should be done with the selected passage?',
-        placeholder: 'Reformule ça',
+        placeholder: 'Rephrase this',
         confirm: 'Leave the mention',
-        suggestions: ['Reformule ça', 'Résume cette partie', 'Développe ce point', 'Vérifie les faits'],
+        // English like the rest of the interface. The instruction itself is
+        // free text: writing it in the document's own language is what an agent
+        // needs, and the contract tells it to answer in that language.
+        suggestions: ['Rephrase this', 'Summarise this part', 'Expand on this', 'Check the facts'],
     });
     if (!prompt) return;
 
