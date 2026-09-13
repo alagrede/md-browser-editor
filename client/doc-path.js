@@ -11,6 +11,11 @@ export const docPath = Facet.define({
     combine: values => values[0] ?? '',
 });
 
+/** What to do when a rendered link is clicked. Provided by main.js. */
+export const followLink = Facet.define({
+    combine: values => values[0] ?? (() => {}),
+});
+
 /**
  * Percent-encodes a path segment by segment, decoding first: markdown written
  * by a tool already carries `%20`, and encodeURI would turn that into `%2520`
@@ -67,4 +72,35 @@ export function rootAssetUrl(url) {
     const raw = String(url ?? '').trim();
     if (!raw || /^[a-z][a-z0-9+.-]+:/i.test(raw) || raw.startsWith('//')) return null;
     return '/' + encodePath(normalize(raw.replace(/^\/+/, '')));
+}
+
+/**
+ * What a link in a document points at.
+ *
+ * A relative `.md` is another document of the tree and belongs in the editor —
+ * handing it to the browser asks the server for a markdown file, which it
+ * refuses to serve (it serves documents rendered, not raw), so the link looked
+ * broken. Anything else is the browser's business.
+ *
+ * @returns {{kind: 'document'|'asset'|'external', path?: string, hash?: string, url?: string}}
+ */
+export function linkTarget(href, from) {
+    const raw = String(href ?? '').trim();
+    if (!raw) return { kind: 'external', url: raw };
+
+    // A bare fragment stays in the document being read.
+    if (raw.startsWith('#')) return { kind: 'document', path: String(from ?? ''), hash: raw.slice(1) };
+
+    if (/^[a-z][a-z0-9+.-]+:/i.test(raw) || raw.startsWith('//')) return { kind: 'external', url: raw };
+
+    const [pathPart, ...rest] = raw.split('#');
+    const hash = rest.join('#');
+
+    if (!/\.md$/i.test(pathPart)) {
+        // An image, a PDF: the server serves those, the browser displays them.
+        return { kind: 'asset', url: assetUrl(pathPart, from) ?? pathPart };
+    }
+
+    const url = assetUrl(pathPart, from); // same resolution rules as an image
+    return { kind: 'document', path: url ? decodeURIComponent(url.replace(/^\//, '')) : pathPart, hash };
 }

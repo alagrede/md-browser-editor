@@ -14,7 +14,7 @@ import { Decoration, EditorView, ViewPlugin, WidgetType } from '@codemirror/view
 import { RangeSet } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import { frontmatterRange } from './frontmatter.js';
-import { assetUrl, docPath, rootAssetUrl } from './doc-path.js';
+import { assetUrl, docPath, followLink, rootAssetUrl } from './doc-path.js';
 import { tableRangesOf } from './table.js';
 
 /** Marks hidden by replacing them with nothing. */
@@ -270,14 +270,16 @@ export const livePreview = ViewPlugin.fromClass(
     {
         decorations: plugin => plugin.decorations,
         eventHandlers: {
-            // A rendered link opens in a new tab on ⌘/Ctrl-click, like an editor.
-            mousedown(event) {
+            // A rendered link is followed on click — a link you can see is a
+            // link you can take. Editing its text means putting the caret there
+            // with the keyboard, or clicking just past it, which is the trade
+            // every live-preview editor makes.
+            mousedown(event, view) {
                 const target = event.target.closest?.('.cm-md-link');
-                if (!target || !(event.metaKey || event.ctrlKey)) return false;
-                const href = target.getAttribute('data-href');
+                const href = target?.getAttribute('data-href');
                 if (!href) return false;
                 event.preventDefault();
-                window.open(href, '_blank', 'noopener');
+                view.state.facet(followLink)(href);
                 return true;
             },
         },

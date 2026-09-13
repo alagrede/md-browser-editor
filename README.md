@@ -88,7 +88,7 @@ an error — the block simply stays plain.
 | New file | ＋ in the sidebar, path relative to the served directory |
 | Mention | select a passage, ⌘M |
 | Resolve a mention | click its pill |
-| Open a link | ⌘/Ctrl-click |
+| Follow a link | click it |
 | Format | ⌘B, ⌘I, ⌘E (code), ⌘⇧X (strikethrough), ⌘K (link) |
 | Turn into | ⌘1 ⌘2 ⌘3 (headings), ⌘⇧8 ⌘⇧7 ⌘⇧9 (bullet, numbered, task), ⌘⇧' (quote) |
 | Insert | right-click → image, table, code block, divider |
@@ -97,6 +97,14 @@ an error — the block simply stays plain.
 Every formatting command is a **toggle**: ⌘B on bold text takes the bold off, and
 asking for a heading 2 on a heading 2 gives you a paragraph back — a command that
 only ever adds is one you undo by hand. Enter continues a list or a quote.
+
+**A link between documents opens in the editor.** `[Accueil](../accueil.md)`
+loads that document, `page.md#a-heading` loads it and scrolls there, and a bare
+`#a-heading` jumps within the one you are reading — resolved against the
+document's own folder, like an image. Anything else (http, mailto, a PDF) opens
+in a new tab; following a link never replaces the editor, which would take an
+unsaved buffer with it. The trade is that clicking a link follows it rather than
+placing the caret in its text: use the arrow keys, or ⌘K on a selection.
 
 Right-click opens the same actions, named the same way, and moves the caret to
 where you clicked first — otherwise the command lands wherever the caret

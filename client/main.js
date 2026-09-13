@@ -19,7 +19,7 @@ import { codeLanguages } from './code-languages.js';
 import { codeHighlighting } from './highlight.js';
 import { tables, tableTheme } from './table.js';
 import { frontmatter, frontmatterTheme } from './frontmatter.js';
-import { docPath } from './doc-path.js';
+import { docPath, followLink, linkTarget } from './doc-path.js';
 import { editingKeymap, menuItems, showContextMenu } from './editing.js';
 import { api, RequestError } from './api.js';
 import { livePreview, livePreviewTheme } from './live-preview.js';
@@ -237,6 +237,7 @@ function mountEditor(source) {
             extensions: [
                 // Image paths are relative to THIS document, not to the page URL.
                 docPath.of(state.current ?? ''),
+                followLink.of(follow),
                 history(),
                 highlightActiveLine(),
                 placeholder('Write markdown…'),
@@ -310,7 +311,7 @@ function mountEditor(source) {
     window.__mdEditorView = view;
 }
 
-async function openFile(path) {
+async function openFile(path, { hash = '' } = {}) {
     if (state.dirty) await save();
     try {
         const { source, mtime } = await api.read(path);
@@ -325,9 +326,53 @@ async function openFile(path) {
         setStatus('');
         paintTree();
         view.focus();
+        if (hash) scrollToHeading(hash);
     } catch (error) {
         if (isNetworkFailure(error)) setOffline(true);
-        setStatus(error.message, 'error');
+        // A link pointing at something that is not there says which thing.
+        setStatus(error.status === 404 ? `${path} — not in this tree` : error.message, 'error');
+    }
+}
+
+/**
+ * A link was clicked. Another document of the tree opens here; anything else is
+ * the browser's job.
+ */
+function follow(href) {
+    const target = linkTarget(href, state.current ?? '');
+
+    if (target.kind === 'document') {
+        if (target.path === state.current) {
+            scrollToHeading(target.hash);
+            return;
+        }
+        openFile(target.path, { hash: target.hash });
+        return;
+    }
+
+    // Always a new tab. Following a link must never replace the editor — with
+    // an unsaved buffer in it, and no way back to where you were.
+    window.open(target.url ?? href, '_blank', 'noopener');
+}
+
+/** Puts a heading at the top of the view, by its text. */
+function scrollToHeading(hash) {
+    if (!hash || !view) return;
+    const wanted = decodeURIComponent(hash).replace(/[-_]+/g, ' ').trim().toLowerCase();
+    const doc = view.state.doc;
+
+    for (let number = 1; number <= doc.lines; number++) {
+        const line = doc.line(number);
+        const heading = /^#{1,6}\s+(.*)$/.exec(line.text);
+        if (!heading) continue;
+        const text = heading[1].replace(/[*`_]/g, '').replace(/[-_]+/g, ' ').trim().toLowerCase();
+        if (text !== wanted && text.replace(/[^a-z0-9 ]/g, '') !== wanted.replace(/[^a-z0-9 ]/g, '')) continue;
+        view.dispatch({
+            selection: { anchor: line.from },
+            effects: EditorView.scrollIntoView(line.from, { y: 'start', yMargin: 24 }),
+        });
+        view.focus();
+        return;
     }
 }
 
