@@ -39,6 +39,17 @@ italics, inline code, links, images, quotes, lists, rules. It is the
 Obsidian/Znote model rather than a split view, because reading and editing the
 same words in the same place is the point.
 
+**Tables render as tables, and are edited as tables.** Click a cell to edit it
+(the input holds the raw markdown of that cell), Tab to move to the next one,
+＋ to add a row or a column, and the header cell carries a ✕ to drop its column
+and a button to cycle its alignment — the delimiter row is not reachable any
+other way once the table is rendered. Every edit is serialized straight back
+into the document, so the file stays the only state.
+
+**Fenced code is highlighted**: JavaScript, TypeScript, JSON, CSS, HTML, shell,
+YAML, Python, SQL, XML, diff, Dockerfile and TOML. An unknown info string is not
+an error — the block simply stays plain.
+
 | | |
 | --- | --- |
 | Save | automatic, ~1s after you stop typing — or ⌘S |
@@ -151,10 +162,12 @@ trust and nothing more.
 
 ## Accepted limits
 
-- **Tables stay as source.** Rendering them in a live-preview editor means
-  making them editable in place, which is a project of its own.
-- **Fenced code has no syntax highlighting** — it gets the block styling and is
-  left alone. Adding it means shipping a language pack per language.
+- **A rendered table has no raw view.** It is edited through its cells, like
+  in Znote. Nothing is lost — the markdown is rewritten from the cells on every
+  change — but a hand-crafted alignment row comes back normalized.
+- **The language list is curated, not exhaustive.** Bundling every mode
+  CodeMirror knows would triple the download for languages documentation rarely
+  contains. Adding one is three lines in `client/code-languages.js`.
 - **One mention cannot contain another.** Overlapping instructions are a
   conversation, not an annotation.
 - **No rename, move or delete** from the browser. Those belong to your file

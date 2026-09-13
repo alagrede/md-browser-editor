@@ -110,6 +110,11 @@ function buildDecorations(view) {
             enter: node => {
                 const name = node.name;
 
+                // Tables are rendered as a block widget by the `tables`
+                // plugin; descending into one would decorate text that is no
+                // longer displayed, and overlap its widget.
+                if (name === 'Table') return false;
+
                 if (name === 'Image') {
                     if (touches(state, node.from, node.to)) return false;
                     const raw = state.doc.sliceString(node.from, node.to);

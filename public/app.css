@@ -21,6 +21,16 @@
     --row-hover: rgba(0, 0, 0, 0.05);
     --row-current: rgba(37, 99, 235, 0.12);
     --selection: rgba(37, 99, 235, 0.22);
+
+    --syn-comment: #6b7280;
+    --syn-keyword: #b45309;
+    --syn-string: #15803d;
+    --syn-number: #b91c1c;
+    --syn-function: #6d28d9;
+    --syn-property: #1d4ed8;
+    --syn-type: #0f766e;
+    --syn-punctuation: #6b7280;
+    --syn-variable: #1f2937;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -41,6 +51,16 @@
         --row-hover: rgba(255, 255, 255, 0.06);
         --row-current: rgba(110, 168, 254, 0.18);
         --selection: rgba(110, 168, 254, 0.28);
+
+        --syn-comment: #7a8494;
+        --syn-keyword: #fb9936;
+        --syn-string: #9ece6a;
+        --syn-number: #f78c6c;
+        --syn-function: #82aaff;
+        --syn-property: #7dd3fc;
+        --syn-type: #5eead4;
+        --syn-punctuation: #98a2b3;
+        --syn-variable: #d7dce5;
     }
 }
 

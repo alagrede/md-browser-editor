@@ -7,7 +7,13 @@
 import { EditorState } from '@codemirror/state';
 import { EditorView, keymap, highlightActiveLine, drawSelection, placeholder } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { markdown } from '@codemirror/lang-markdown';
+// markdownLanguage, not the default base: the default is plain CommonMark,
+// which has no tables and no strikethrough — their nodes never appear in the
+// tree, so the decorations for them silently never fire.
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
+import { codeLanguages } from './code-languages.js';
+import { codeHighlighting } from './highlight.js';
+import { tables, tableTheme } from './table.js';
 import { api } from './api.js';
 import { livePreview, livePreviewTheme } from './live-preview.js';
 import { editorTheme } from './theme.js';
@@ -134,8 +140,11 @@ function mountEditor(source) {
                 highlightActiveLine(),
                 placeholder('Write markdown…'),
                 EditorView.lineWrapping,
-                markdown(),
+                markdown({ base: markdownLanguage, codeLanguages }),
+                codeHighlighting,
                 editorTheme,
+                tables,
+                tableTheme,
                 livePreview,
                 livePreviewTheme,
                 mentionsView(resolveMention),

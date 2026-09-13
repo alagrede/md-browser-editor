@@ -37,8 +37,10 @@
     },
     "devDependencies": {
         "@codemirror/commands": "^6.7.1",
+        "@codemirror/lang-json": "^6.0.2",
         "@codemirror/lang-markdown": "^6.3.1",
         "@codemirror/language": "^6.10.8",
+        "@codemirror/legacy-modes": "^6.5.4",
         "@codemirror/state": "^6.5.0",
         "@codemirror/view": "^6.36.1",
         "@lezer/highlight": "^1.2.1",
