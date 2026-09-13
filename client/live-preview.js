@@ -58,11 +58,18 @@ class ImageWidget extends WidgetType {
         return other.url === this.url && other.alt === this.alt && other.from === this.from;
     }
 
-    toDOM() {
+    toDOM(view) {
         const wrap = document.createElement('span');
         wrap.className = 'cm-md-image';
         const img = document.createElement('img');
         img.alt = this.alt ?? '';
+
+        // An image arrives after the line it sits on has been measured: the
+        // widget is nearly flat when CodeMirror records its height, then grows.
+        // Without this, every height below it stays wrong — and a click lands
+        // on a line above the one you aimed at, further off the more images
+        // there are above.
+        const remeasure = () => view.requestMeasure();
 
         const relative = assetUrl(this.url, this.from);
         const fromRoot = rootAssetUrl(this.url);
@@ -71,6 +78,7 @@ class ImageWidget extends WidgetType {
         // shared folder at the root is the other convention in the wild, so a
         // miss falls back to it once before giving up.
         let tried = false;
+        img.onload = remeasure;
         img.onerror = () => {
             if (!tried && fromRoot && fromRoot !== relative) {
                 tried = true;
@@ -79,6 +87,7 @@ class ImageWidget extends WidgetType {
             }
             wrap.classList.add('cm-md-image-broken');
             wrap.textContent = `🖼 ${this.alt || this.url}`;
+            remeasure(); // the fallback text is a different height again
         };
         img.src = relative ?? this.url;
 

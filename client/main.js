@@ -281,6 +281,12 @@ function mountEditor(source) {
         }),
     });
     dom.addMention.disabled = true;
+
+    // A handle on the editor for automated tests: reading the caret, the
+    // document and the measured heights from outside is how the height-map bug
+    // above was found. The page already talks to the API — this adds no reach
+    // it did not have.
+    window.__mdEditorView = view;
 }
 
 async function openFile(path) {
