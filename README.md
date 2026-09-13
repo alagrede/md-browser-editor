@@ -68,6 +68,23 @@ npm test             # 78 tests, no framework
 npx . serve examples/docs --open
 ```
 
+### Updating
+
+```sh
+md-browser-editor --version            # what you are running
+npm view md-browser-editor version     # what is published
+
+npm install --global md-browser-editor@latest   # a global install
+npm update md-browser-editor                    # a project one, within its range
+npx md-browser-editor@latest serve ./docs       # no install: pin it to latest
+```
+
+One thing worth knowing, because it looks like a stale cache and is not: `npx`
+runs a copy it already has — the project's `node_modules/.bin` first, then a
+global install — and only fetches when it finds none. So `npx md-browser-editor`
+next to a global install runs *that* version, however old. Naming
+`@latest` is what makes the question unambiguous.
+
 **What lands on disk:** `bin/`, `src/`, and a single bundled `public/app.js` —
 240 kB packed, and **no runtime dependencies at all**, so there is no tree of
 transitive packages to audit or keep up to date. Node ≥ 18 is the only
@@ -376,6 +393,18 @@ Anything under `client/` needs `npm run build` before it reaches the browser:
 `public/app.js` is committed on purpose so the package runs with no install, and
 `prepublishOnly` rebuilds it anyway so a published version can never carry a
 stale bundle.
+
+### Releasing
+
+```sh
+npm version patch          # or minor / major — bumps, commits, tags
+npm publish --otp=<code>   # prepublishOnly runs the build and the tests first
+git push --follow-tags
+```
+
+Nothing reaches npm if the build or a test fails: that is what `prepublishOnly`
+is for. The version in `package.json` and the tag in git are the same thing said
+twice, which is why `npm version` writes both.
 
 ## License
 
