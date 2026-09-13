@@ -13,6 +13,14 @@
     ],
     "license": "MIT",
     "author": "alagrede (https://github.com/alagrede)",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/alagrede/md-browser-editor.git"
+    },
+    "bugs": {
+        "url": "https://github.com/alagrede/md-browser-editor/issues"
+    },
+    "homepage": "https://github.com/alagrede/md-browser-editor#readme",
     "type": "module",
     "bin": {
         "md-browser-editor": "bin/cli.mjs"
@@ -33,7 +41,8 @@
     "scripts": {
         "build": "node build.mjs",
         "test": "node --test test/*.test.mjs",
-        "serve": "node bin/cli.mjs serve"
+        "serve": "node bin/cli.mjs serve",
+        "prepublishOnly": "npm run build && npm test"
     },
     "devDependencies": {
         "@codemirror/commands": "^6.7.1",
