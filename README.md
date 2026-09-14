@@ -7,6 +7,10 @@ get an explorer tree and a live-preview editor in your browser — tables that
 render as tables, frontmatter as a properties panel, highlighted code, the
 shortcuts you expect. Files stay plain markdown on disk.
 
+And for the edits you would rather not type yourself, leave a **mention**:
+select a passage, say what should be done with it, and an AI agent — Claude
+Code, Codex — reads the instruction, makes the change, and clears the mark.
+
 ```sh
 npx md-browser-editor serve ./docs --open
 ```
@@ -98,11 +102,28 @@ remembered per browser.
 
 </details>
 
-## Mentions
+## Mentions — marking up work for an AI agent
 
-Sometimes the fix is not yours to type. Select a passage, press **⌘M**, and say
-what should happen to it — the instruction is stored **in the document**, as a
-pair of HTML comments:
+**A mention is a to-do for an agent, attached to the text it applies to.**
+
+You are reading a document and you see the work: a paragraph too jargon-heavy, a
+section that should be summarised, a procedure that is out of date, a whole page
+that needs rewriting for a different audience. You do not want to type it now,
+and a ticket saying "page 4, second paragraph" is a bad way to say where.
+
+So you mark it instead. Select the passage — or ⌘A for the whole file — press
+**⌘M**, and write what should be done with it. Then **Claude Code or Codex reads
+your marks, makes the edits, and removes them.** You review the diff.
+
+```
+you     select the passage, ⌘M, "Rephrase this, too much jargon"
+agent   /mentions            — reads every instruction and the text it points at
+agent   rewrites the passage — and removes the marks to say it is done
+you     git diff             — and keep it, or ask again
+```
+
+The mark is stored **in the document**, as a pair of HTML comments around the
+passage:
 
 ```markdown
 <!--ai:a3f Rephrase this, too much jargon-->
@@ -115,9 +136,12 @@ them in the file rather than in a sidecar buys four things: the anchor never
 drifts (the text moves, its markers move with it), the instruction sits exactly
 where it applies, it survives a rename, and it shows up in a `git diff`.
 
-In the editor the markers fold away — you see the passage highlighted with the
-instruction as a pill, and a panel lists every mention in the tree. Click a pill
-to resolve it. The instruction is free text, in whatever language you think in.
+In the editor those markers fold away — you see the passage highlighted with the
+instruction as a pill, and a panel lists every mention in the tree, so "what is
+left to do in this documentation" is one click away. Click a pill to resolve a
+mention yourself. The instruction is free text, in whatever language you think
+in — `<!--ai:b7 Résume ça en deux phrases-->` works as well as the English above,
+and the agent is told to answer in the language of the *passage*.
 
 ![The mentions panel, listing every pending instruction](https://raw.githubusercontent.com/alagrede/md-browser-editor/main/docs/screenshots/mentions.png)
 
