@@ -41,7 +41,7 @@ export function renderShell({ title, root }) {
       <span id="current-path" class="current-path">No file open</span>
       <span id="status" class="status"></span>
       <span class="spacer"></span>
-      <button id="add-mention" class="button" title="Annotate the selection for an AI agent (⌘M)" disabled>＠ Mention</button>
+      <button id="add-mention" class="button whole-file" title="Leave a mention about this whole file (⌘M). Select a passage first to mention just that passage.">＠ Mention</button>
     </header>
     <div id="editor"></div>
     <div id="empty-state">Pick a file on the left, or create one with ＋.</div>
@@ -54,8 +54,9 @@ export function renderShell({ title, root }) {
   </header>
   <div class="panel-body">
     <p class="panel-text">
-      A mention is an instruction you leave on a passage. A coding agent reads them all,
-      applies each one to the passage between its markers, then drops the markers to say it is done.
+      A mention is an instruction you leave on a passage — or on a whole document, when nothing
+      is selected. A coding agent reads them all, applies each one to what it points at, then
+      drops the markers to say it is done.
       Teaching it that loop is one file per agent, and this writes them
       into <code id="agent-root">the served directory</code>.
     </p>
@@ -108,7 +109,7 @@ codex         → "Applique les mentions"</code></pre>
     <button id="close-mentions" class="icon-button" title="Close">✕</button>
   </header>
   <div id="mentions-list"></div>
-  <p class="hint">An agent reads these with <code>md-browser-editor mentions --json</code>, edits the passage, then drops the markers.</p>
+  <p class="hint">An agent reads these with <code>md-browser-editor mentions --json</code>, edits what each one points at, then drops the markers.</p>
 </div>
 <script src="/app.js" type="module"></script>
 </body>

@@ -4,8 +4,10 @@ description: Apply the mentions left in the markdown, then drop their markers
 
 Apply the mentions left in this directory's markdown documents.
 
-A mention is an instruction attached to a passage, stored in the document
-itself as a pair of HTML comments:
+A mention is an instruction stored in the document itself, as an HTML comment.
+It comes in two shapes.
+
+Around a passage, when the request is about that passage:
 
 ```markdown
 <!--ai:a3f Rephrase this, too much jargon-->
@@ -13,11 +15,20 @@ itself as a pair of HTML comments:
 <!--/ai:a3f-->
 ```
 
+Alone at the top of the file, when the request is about the whole document:
+
+```markdown
+<!--ai:file:b7k Rewrite this page for a non-technical audience-->
+```
+
+The JSON says which is which: `"scope": "passage"` or `"scope": "file"`.
+
 Applying them:
 
 1. Run `npx md-browser-editor mentions . --json` to read them all.
-2. For each mention, apply its `prompt` to the passage **between its markers**,
-   and only to that passage. Edit the file in place.
+2. For each mention, apply its `prompt` — to the passage **between its markers**
+   and only to that passage for a `passage` mention, or to the document as a
+   whole for a `file` one. Edit the file in place.
 3. Drop that mention's markers once it is done:
    `npx md-browser-editor mentions . --resolve <id>`. Leaving them in place
    means the request is still open, so an unresolved marker is how you say "I
@@ -27,12 +38,17 @@ Applying them:
 
 Rules:
 
-- Change nothing outside the marked passages. A mention is not an invitation to
-  tidy the rest of the document.
+- Change nothing outside the marked passages. A passage mention is not an
+  invitation to tidy the rest of the document; a `file` mention covers the
+  document, but still only what its instruction asks for.
+- A `file` mention's marker sits below the frontmatter, and the frontmatter is
+  not part of what it asks you to rewrite unless it says so.
 - Keep the document's language: the instruction may be written in any language,
   and it is the passage's language that decides the answer's.
-- A mention reported as `unterminated` has an opening marker and no closing one,
-  so it annotates nothing. Do not guess its extent — report it and move on.
+- A `passage` mention reported as `unterminated` has an opening marker and no
+  closing one, so it annotates nothing. Do not guess its extent — report it and
+  move on. (A `file` mention has no closing marker by design; it is never
+  unterminated.)
 - If a prompt is ambiguous enough that two readings would produce different text,
   say so instead of picking one.
 - If the directory is a git repository, leave the work as a reviewable diff and

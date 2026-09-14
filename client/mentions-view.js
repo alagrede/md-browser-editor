@@ -8,22 +8,36 @@ import { RangeSet } from '@codemirror/state';
 import { parseMentions } from '../src/mentions.mjs';
 
 class PromptWidget extends WidgetType {
-    constructor(id, prompt) {
+    constructor(id, prompt, scope) {
         super();
         this.id = id;
         this.prompt = prompt;
+        this.scope = scope;
     }
 
     eq(other) {
-        return other.id === this.id && other.prompt === this.prompt;
+        return other.id === this.id && other.prompt === this.prompt && other.scope === this.scope;
     }
 
     toDOM() {
+        const file = this.scope === 'file';
         const pill = document.createElement('span');
-        pill.className = 'cm-mention-pill';
+        pill.className = file ? 'cm-mention-pill cm-mention-pill-file' : 'cm-mention-pill';
         pill.dataset.mentionId = this.id;
-        pill.title = 'Click to resolve this mention (keeps the text, drops the markers)';
-        pill.textContent = `＠ ${this.prompt}`;
+        pill.title = file
+            ? 'This asks for the whole document. Click to drop it.'
+            : 'Click to resolve this mention (keeps the text, drops the markers)';
+
+        if (file) {
+            // The scope has to be visible: the same pill, in the same place,
+            // would otherwise read as an instruction about the line under it.
+            const badge = document.createElement('span');
+            badge.className = 'cm-mention-scope';
+            badge.textContent = 'whole file';
+            pill.append(badge, document.createTextNode(this.prompt));
+        } else {
+            pill.textContent = `＠ ${this.prompt}`;
+        }
         return pill;
     }
 
@@ -42,9 +56,11 @@ function buildDecorations(view) {
         items.push({
             from: mention.from,
             to: mention.bodyFrom,
-            deco: Decoration.replace({ widget: new PromptWidget(mention.id, mention.prompt) }),
+            deco: Decoration.replace({ widget: new PromptWidget(mention.id, mention.prompt, mention.scope) }),
         });
-        if (mention.unterminated) continue;
+        // A file mention is the marker and nothing else: no passage to
+        // highlight, no closing marker to hide.
+        if (mention.scope === 'file' || mention.unterminated) continue;
         if (mention.bodyTo > mention.bodyFrom) {
             items.push({
                 from: mention.bodyFrom,
@@ -112,6 +128,18 @@ export const mentionsTheme = EditorView.theme({
         whiteSpace: 'nowrap',
     },
     '.cm-mention-pill:hover': { filter: 'brightness(1.08)' },
+    '.cm-mention-pill-file': {
+        background: 'var(--mention-file-bg, var(--mention-bg))',
+        gap: '0.45em',
+    },
+    '.cm-mention-scope': {
+        textTransform: 'uppercase',
+        letterSpacing: '0.06em',
+        fontSize: '0.85em',
+        opacity: '0.7',
+        borderRight: '1px solid var(--mention-border)',
+        paddingRight: '0.45em',
+    },
     '.cm-mention-body': {
         background: 'var(--mention-highlight)',
         borderBottom: '1px solid var(--mention-border)',

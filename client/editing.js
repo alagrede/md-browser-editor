@@ -67,9 +67,10 @@ export function menuItems(view, { onMention }) {
 
     return [
         {
-            label: 'Leave a mention…',
+            // Without a selection the same command asks about the document, so
+            // the label has to say which one you are about to leave.
+            label: hasSelection ? 'Leave a mention…' : 'Leave a mention on this file…',
             key: `${mod}M`,
-            enabled: hasSelection,
             run: onMention,
         },
         '-',

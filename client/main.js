@@ -26,7 +26,7 @@ import { livePreview, livePreviewTheme } from './live-preview.js';
 import { editorTheme } from './theme.js';
 import { mentionsTheme, mentionsView } from './mentions-view.js';
 import { renderTree, revealFile, toggleDir } from './tree.js';
-import { insertMention } from '../src/mentions.mjs';
+import { insertFileMention, insertMention } from '../src/mentions.mjs';
 import { askChoice, askText } from './ask.js';
 
 const dom = {
@@ -124,6 +124,18 @@ async function refreshTree() {
     paintTree();
 }
 
+/**
+ * ⌘M does two different things, and which one is only visible in the selection.
+ * The button says so rather than going grey, which used to read as "mentions
+ * are unavailable here".
+ */
+function describeMentionButton(empty) {
+    dom.addMention.title = empty
+        ? 'Leave a mention about this whole file (⌘M). Select a passage first to mention just that passage.'
+        : 'Leave a mention about the selected passage (⌘M)';
+    dom.addMention.classList.toggle('whole-file', empty);
+}
+
 async function refreshMentions() {
     const { mentions } = await api.mentions();
     dom.mentionCount.textContent = String(mentions.length);
@@ -133,7 +145,7 @@ async function refreshMentions() {
     if (!mentions.length) {
         const empty = document.createElement('p');
         empty.className = 'hint';
-        empty.textContent = 'No mention yet. Select a passage and press ⌘M.';
+        empty.textContent = 'No mention yet. Press ⌘M — on a selection for a passage, on nothing for the whole file.';
         dom.panelList.appendChild(empty);
         return;
     }
@@ -148,12 +160,19 @@ async function refreshMentions() {
 
         const where = document.createElement('button');
         where.className = 'link-button mention-where';
-        where.textContent = `${mention.file}:${mention.line}`;
+        where.textContent = mention.scope === 'file' ? mention.file : `${mention.file}:${mention.line}`;
         where.onclick = () => openFile(mention.file);
 
         const quote = document.createElement('p');
-        quote.className = 'mention-quote';
-        quote.textContent = mention.text.length > 220 ? `${mention.text.slice(0, 220)}…` : mention.text;
+        if (mention.scope === 'file') {
+            // Quoting the first 220 characters of the document would suggest
+            // the instruction is about them, which is exactly what it is not.
+            quote.className = 'mention-quote mention-scope-note';
+            quote.textContent = 'The whole document.';
+        } else {
+            quote.className = 'mention-quote';
+            quote.textContent = mention.text.length > 220 ? `${mention.text.slice(0, 220)}…` : mention.text;
+        }
 
         card.append(prompt, where, quote);
         if (mention.unterminated) {
@@ -296,13 +315,13 @@ function mountEditor(source) {
                         scheduleSave();
                     }
                     if (update.selectionSet || update.docChanged) {
-                        dom.addMention.disabled = update.state.selection.main.empty;
+                        describeMentionButton(update.state.selection.main.empty);
                     }
                 }),
             ],
         }),
     });
-    dom.addMention.disabled = true;
+    describeMentionButton(true);
 
     // A handle on the editor for automated tests: reading the caret, the
     // document and the measured heights from outside is how the height-map bug
@@ -392,28 +411,41 @@ function scrollToHeading(hash) {
     }
 }
 
-/** Wrap the selection in a mention, asking for the instruction first. */
+/**
+ * Leave a mention, asking for the instruction first.
+ *
+ * With a selection it wraps that passage; without one the request is about the
+ * document as a whole, which is the honest reading of "⌘M with nothing
+ * selected" — a page can need rewriting without one paragraph being at fault.
+ */
 async function addMention() {
-    if (!view || !state.current) return;
-    const { from, to } = view.state.selection.main;
-    if (from === to) {
-        setStatus('Select the passage first, then ⌘M.', 'error');
+    if (!view || !state.current) {
+        setStatus('Open a document first.', 'error');
         return;
     }
+    const { from, to } = view.state.selection.main;
+    const whole = from === to;
+
     const prompt = await askText({
-        title: 'Mention for an agent',
-        label: 'What should be done with the selected passage?',
-        placeholder: 'Rephrase this',
+        title: whole ? 'Mention for an agent — the whole file' : 'Mention for an agent',
+        label: whole
+            ? `What should be done with ${state.current}?`
+            : 'What should be done with the selected passage?',
+        placeholder: whole ? 'Rewrite this page for a non-technical audience' : 'Rephrase this',
         confirm: 'Leave the mention',
         // English like the rest of the interface. The instruction itself is
         // free text: writing it in the document's own language is what an agent
         // needs, and the contract tells it to answer in that language.
-        suggestions: ['Rephrase this', 'Summarise this part', 'Expand on this', 'Check the facts'],
+        suggestions: whole
+            ? ['Rewrite this page for a non-technical audience', 'Bring this page up to date', 'Shorten this page', 'Check the facts on this page']
+            : ['Rephrase this', 'Summarise this part', 'Expand on this', 'Check the facts'],
     });
     if (!prompt) return;
 
     const source = view.state.doc.toString();
-    const { source: next } = insertMention(source, from, to, prompt);
+    const { source: next } = whole
+        ? insertFileMention(source, prompt)
+        : insertMention(source, from, to, prompt);
     view.dispatch({ changes: { from: 0, to: source.length, insert: next } });
     save();
 }

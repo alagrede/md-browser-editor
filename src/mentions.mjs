@@ -1,9 +1,16 @@
-// Mentions: a passage of a document, plus what you want an AI agent to do with
-// it. They live IN the markdown, as HTML comments around the passage:
+// Mentions: what you want an AI agent to do, attached to the text it applies
+// to. They live IN the markdown, as HTML comments around the passage:
 //
 //     <!--ai:a3f Rephrase this, too much jargon-->
 //     The service exposes an idempotent endpoint…
 //     <!--/ai:a3f-->
+//
+// Some requests are about the document as a whole — "rewrite this page for a
+// non-technical audience" — and wrapping the entire file to say so would
+// highlight everything and put a marker in front of its first heading. Those
+// get a single marker at the top instead, and no passage:
+//
+//     <!--ai:file:a3f Rewrite this page for a non-technical audience-->
 //
 // Why in the document rather than in a sidecar: the anchor never drifts (the
 // text moves, its markers move with it), the instruction sits exactly where it
@@ -15,8 +22,15 @@
 // edit the passage between the markers, then drop the markers (or call
 // `mentions --resolve <id>`) to mark the request done.
 
-/** Marker syntax. The id is what pairs an opening comment with its closing one. */
-const OPEN = /<!--\s*ai:([A-Za-z0-9_-]{1,32})\s([\s\S]*?)-->/g;
+import { findFrontmatter } from './frontmatter.mjs';
+
+/**
+ * Marker syntax. The id is what pairs an opening comment with its closing one;
+ * the optional `file:` says the instruction is about the whole document, and
+ * such a marker stands alone — there is nothing for it to close.
+ */
+const OPEN = /<!--\s*ai:(file:)?([A-Za-z0-9_-]{1,32})\s([\s\S]*?)-->/g;
+const FILE_MARKER = /^<!--\s*ai:file:[A-Za-z0-9_-]{1,32}\s[\s\S]*?-->/;
 const closeFor = id => new RegExp(`<!--\\s*/ai:${escapeRegExp(id)}\\s*-->`);
 
 function escapeRegExp(text) {
@@ -48,12 +62,18 @@ export function newMentionId(existing = []) {
 /**
  * Every mention in a document, in source order.
  *
+ * `scope` is `'passage'` for the wrapping form and `'file'` for the standalone
+ * one; a file mention has no text of its own, because its subject is the whole
+ * document.
+ *
  * An opening marker with no closing one is reported with `unterminated: true`
  * rather than dropped: it is the shape a hand-edit leaves behind, and silently
- * ignoring it would lose the instruction.
+ * ignoring it would lose the instruction. A file marker is not that — it is
+ * complete as it stands.
  *
- * @returns {Array<{id: string, prompt: string, text: string, from: number, to: number,
- *                  bodyFrom: number, bodyTo: number, unterminated: boolean}>}
+ * @returns {Array<{id: string, scope: 'passage'|'file', prompt: string, text: string,
+ *                  from: number, to: number, bodyFrom: number, bodyTo: number,
+ *                  unterminated: boolean}>}
  */
 export function parseMentions(source) {
     const content = String(source ?? '');
@@ -62,14 +82,31 @@ export function parseMentions(source) {
     let match;
 
     while ((match = OPEN.exec(content)) !== null) {
-        const [raw, id, rawPrompt] = match;
+        const [raw, fileScope, id, rawPrompt] = match;
         const from = match.index;
         const bodyFrom = from + raw.length;
+
+        if (fileScope) {
+            found.push({
+                id,
+                scope: 'file',
+                prompt: rawPrompt.trim(),
+                text: '',
+                from,
+                to: bodyFrom,
+                bodyFrom,
+                bodyTo: bodyFrom,
+                unterminated: false,
+            });
+            continue;
+        }
+
         const close = closeFor(id).exec(content.slice(bodyFrom));
 
         if (!close) {
             found.push({
                 id,
+                scope: 'passage',
                 prompt: rawPrompt.trim(),
                 text: '',
                 from,
@@ -84,6 +121,7 @@ export function parseMentions(source) {
         const bodyTo = bodyFrom + close.index;
         found.push({
             id,
+            scope: 'passage',
             prompt: rawPrompt.trim(),
             text: content.slice(bodyFrom, bodyTo).trim(),
             from,
@@ -128,6 +166,39 @@ export function insertMention(source, from, to, prompt) {
 }
 
 /**
+ * Leaves a mention about the whole document — no selection needed.
+ *
+ * The marker goes on its own line at the top of the body, which is where an
+ * agent opening the file reads it first, and *below* the frontmatter: above it
+ * the `---` fence would no longer start the document, and the block would stop
+ * being frontmatter at all. Several of them stack in the order they were left.
+ */
+export function insertFileMention(source, prompt) {
+    const content = String(source ?? '');
+    const id = newMentionId(parseMentions(content).map(mention => mention.id));
+    const marker = `<!--ai:file:${id} ${sanitizePrompt(prompt)}-->`;
+
+    const front = findFrontmatter(content);
+    let at = front ? front.to : 0;
+    const skipBlanks = () => {
+        while (content[at] === '\n') at += 1;
+    };
+
+    skipBlanks();
+    // Past the file mentions already there, so the newest is the last one and
+    // the order in the file is the order they were asked for.
+    let rest;
+    while (FILE_MARKER.test((rest = content.slice(at)))) {
+        at += FILE_MARKER.exec(rest)[0].length;
+        skipBlanks();
+    }
+
+    const after = content.slice(at);
+    const body = after ? `${marker}\n\n` : `${marker}\n`;
+    return { id, source: content.slice(0, at) + body + after };
+}
+
+/**
  * Removes a mention's markers, keeping its text. This is what "the request is
  * done" looks like in the file.
  */
@@ -135,6 +206,19 @@ export function removeMention(source, id) {
     const content = String(source ?? '');
     const mention = parseMentions(content).find(item => item.id === id);
     if (!mention) return content;
+
+    if (mention.scope === 'file') {
+        // A file mention has no text to keep — the marker goes, and with it the
+        // line it sits on, or resolving one would leave a blank line behind.
+        let to = mention.to;
+        if (mention.from === 0 || content[mention.from - 1] === '\n') {
+            // It starts a line: take the rest of that line's break with it, and
+            // the blank line that separated it from the body. A marker with text
+            // after it on the same line is left where it is.
+            while (content[to] === '\n') to += 1;
+        }
+        return content.slice(0, mention.from) + content.slice(to);
+    }
 
     const body = content.slice(mention.bodyFrom, mention.bodyTo);
     const kept = mention.unterminated ? body : body.replace(/^\n/, '').replace(/\n$/, '');

@@ -14,7 +14,7 @@ import {
 } from '../src/agentPrompt.mjs';
 import { parseArgs, UsageError } from '../src/args.mjs';
 import { collectMentions } from '../src/collect.mjs';
-import { removeAllMentions, removeMention } from '../src/mentions.mjs';
+import { removeMention } from '../src/mentions.mjs';
 import { startServer } from '../src/server/server.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 
@@ -29,10 +29,11 @@ Commands:
 
 Run \`md-browser-editor <command> --help\` for a command's options.
 
-A mention is a passage of a document plus what you want done with it. It is
+A mention is what you want done, attached to the text it applies to. It is
 stored in the markdown itself:
 
     <!--ai:a3f Reformule ça-->…the passage…<!--/ai:a3f-->
+    <!--ai:file:b7k Rewrite this page for a beginner-->   (the whole document)
 
 so the instruction travels with the text it applies to.
 `;
@@ -54,6 +55,7 @@ Options:
   --file <path>    only mentions of that file (root-relative)
   --resolve <id>   drop that mention's markers, keeping its text
   --resolve-all    drop every mention's markers
+  --scope <s>      only "passage" mentions, or only "file" ones
 
 Exit code 1 when --resolve finds no such mention.
 `;
@@ -154,7 +156,7 @@ async function serveCommand(argv) {
 async function mentionsCommand(argv) {
     const args = parseArgs(argv, {
         flags: ['--json', '--resolve-all', '--help'],
-        options: ['--file', '--resolve'],
+        options: ['--file', '--resolve', '--scope'],
     });
     if (args.has('--help')) return void console.log(MENTIONS_USAGE);
 
@@ -163,6 +165,15 @@ async function mentionsCommand(argv) {
     if (args.options.file) {
         const wanted = args.options.file.replace(/^\.?\//, '');
         mentions = mentions.filter(mention => mention.file === wanted);
+    }
+    if (args.options.scope) {
+        const wanted = args.options.scope;
+        if (wanted !== 'passage' && wanted !== 'file') {
+            console.error(`--scope takes "passage" or "file", not "${wanted}".`);
+            process.exitCode = 1;
+            return;
+        }
+        mentions = mentions.filter(mention => mention.scope === wanted);
     }
 
     if (args.options.resolve) {
@@ -179,10 +190,17 @@ async function mentionsCommand(argv) {
     }
 
     if (args.has('--resolve-all')) {
+        // By id rather than file-wide: --file and --scope have already narrowed
+        // the list, and "resolve all" must mean all of *those*, not all of the
+        // mentions that happen to share a document with them.
         const files = [...new Set(mentions.map(mention => mention.file))];
         for (const relative of files) {
             const file = path.join(root, relative);
-            await writeFile(file, removeAllMentions(await readFile(file, 'utf8')), 'utf8');
+            let source = await readFile(file, 'utf8');
+            for (const mention of mentions.filter(item => item.file === relative)) {
+                source = removeMention(source, mention.id);
+            }
+            await writeFile(file, source, 'utf8');
         }
         console.log(`Resolved ${mentions.length} mention(s) in ${files.length} file(s).`);
         return;
@@ -200,9 +218,11 @@ async function mentionsCommand(argv) {
 
     for (const mention of mentions) {
         const excerpt = mention.text.replace(/\s+/g, ' ').trim();
-        console.log(`\n${mention.file}:${mention.line}  [${mention.id}]`);
+        const where = mention.scope === 'file' ? `${mention.file}  [${mention.id}]` : `${mention.file}:${mention.line}  [${mention.id}]`;
+        console.log(`\n${where}`);
         console.log(`  ${mention.prompt || '(no instruction)'}`);
-        if (mention.unterminated) console.log('  ⚠ opening marker with no closing one — it annotates nothing');
+        if (mention.scope === 'file') console.log('  › the whole document');
+        else if (mention.unterminated) console.log('  ⚠ opening marker with no closing one — it annotates nothing');
         else console.log(`  > ${excerpt.length > 120 ? `${excerpt.slice(0, 120)}…` : excerpt}`);
     }
     console.log(`\n${mentions.length} mention(s).`);

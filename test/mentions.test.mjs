@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+    insertFileMention,
     insertMention,
     newMentionId,
     parseMentions,
@@ -118,4 +119,57 @@ test('a mention is reported once, even in the root index page', async () => {
         mentions.map(mention => `${mention.file}:${mention.id}`).sort(),
         ['guide/index.md:b2', 'index.md:a1']
     );
+});
+
+test('a mention can be about the whole file, with no selection at all', () => {
+    const source = '# Guide\n\nDu texte.\n';
+    const { id, source: annotated } = insertFileMention(source, 'Réécris cette page pour un débutant');
+    const [mention] = parseMentions(annotated);
+
+    assert.equal(mention.scope, 'file');
+    assert.equal(mention.prompt, 'Réécris cette page pour un débutant');
+    assert.equal(mention.text, '');
+    // It has no closing marker by design — that is not the unterminated shape.
+    assert.equal(mention.unterminated, false);
+    assert.equal(removeMention(annotated, id), source);
+});
+
+test('a file mention sits below the frontmatter, never above it', () => {
+    // Above the `---` fence, the block would stop being frontmatter at all.
+    const source = '---\ntitle: Guide\n---\n\n# Guide\n\nDu texte.\n';
+    const { source: annotated } = insertFileMention(source, 'Mets à jour');
+
+    assert.match(annotated, /^---\ntitle: Guide\n---\n\n<!--ai:file:[a-z0-9]+ Mets à jour-->\n\n# Guide/);
+});
+
+test('file mentions stack in the order they were left', () => {
+    const first = insertFileMention('# T\n', 'Un');
+    const second = insertFileMention(first.source, 'Deux');
+
+    assert.deepEqual(
+        parseMentions(second.source).map(mention => mention.prompt),
+        ['Un', 'Deux']
+    );
+    // And removing one leaves the other, with no blank line where it stood.
+    assert.match(removeMention(second.source, first.id), /^<!--ai:file:[a-z0-9]+ Deux-->\n\n# T\n$/);
+});
+
+test('both scopes live side by side and are told apart', () => {
+    const source = '<!--ai:file:f1 Toute la page-->\n\n<!--ai:p1 Ce passage-->texte<!--/ai:p1-->\n';
+    assert.deepEqual(
+        parseMentions(source).map(mention => [mention.scope, mention.id, mention.text]),
+        [
+            ['file', 'f1', ''],
+            ['passage', 'p1', 'texte'],
+        ]
+    );
+    assert.equal(removeAllMentions(source), 'texte\n');
+});
+
+test('an id of "file" is still a passage mention', () => {
+    // `ai:file:` is the scope; `ai:file ` is a mention whose id happens to be that.
+    const [mention] = parseMentions('<!--ai:file Reformule-->texte<!--/ai:file-->');
+    assert.equal(mention.scope, 'passage');
+    assert.equal(mention.id, 'file');
+    assert.equal(mention.text, 'texte');
 });

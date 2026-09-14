@@ -6,9 +6,11 @@ import { buildTree, flattenFiles, rootIndex } from './tree.mjs';
 import { parseMentions } from './mentions.mjs';
 
 /**
- * @returns {Promise<Array<{file: string, id: string, prompt: string, text: string,
- *                          line: number, unterminated: boolean}>>}
+ * @returns {Promise<Array<{file: string, id: string, scope: 'passage'|'file',
+ *                          prompt: string, text: string, line: number,
+ *                          unterminated: boolean}>>}
  *   `file` is root-relative; `line` is 1-based, pointing at the opening marker.
+ *   A `file` mention is about the whole document, and carries no `text`.
  */
 export async function collectMentions(root) {
     // The root's index.md keeps its own row in the tree, so flattenFiles already
@@ -31,6 +33,7 @@ export async function collectMentions(root) {
             found.push({
                 file: relative,
                 id: mention.id,
+                scope: mention.scope,
                 prompt: mention.prompt,
                 text: mention.text,
                 line: source.slice(0, mention.from).split('\n').length,

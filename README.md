@@ -7,9 +7,10 @@ get an explorer tree and a live-preview editor in your browser — tables that
 render as tables, frontmatter as a properties panel, highlighted code, the
 shortcuts you expect. Files stay plain markdown on disk.
 
-And for the edits you would rather not type yourself, leave a **mention**:
-select a passage, say what should be done with it, and an AI agent — Claude
-Code, Codex — reads the instruction, makes the change, and clears the mark.
+And for the edits you would rather not type yourself, leave a **mention**: on a
+passage or on the whole file, say what should be done with it, and an AI agent —
+Claude Code, Codex — reads the instruction, makes the change, and clears the
+mark.
 
 ```sh
 npx md-browser-editor serve ./docs --open
@@ -42,7 +43,7 @@ the same place is the point.
 | Format | ⌘B, ⌘I, ⌘E (code), ⌘⇧X (strikethrough), ⌘K (link) |
 | Turn into | ⌘1 ⌘2 ⌘3 (headings), ⌘⇧8 ⌘⇧7 ⌘⇧9 (bullet, numbered, task), ⌘⇧' (quote) |
 | Insert | right-click → image, table, code block, divider |
-| Mention | select a passage, ⌘M |
+| Mention | select a passage, ⌘M — or ⌘M with nothing selected, for the whole file |
 | Everything at once | right-click anywhere in the text |
 
 Every formatting command is a **toggle**: ⌘B on bold text takes the bold off,
@@ -111,9 +112,10 @@ section that should be summarised, a procedure that is out of date, a whole page
 that needs rewriting for a different audience. You do not want to type it now,
 and a ticket saying "page 4, second paragraph" is a bad way to say where.
 
-So you mark it instead. Select the passage — or ⌘A for the whole file — press
-**⌘M**, and write what should be done with it. Then **Claude Code or Codex reads
-your marks, makes the edits, and removes them.** You review the diff.
+So you mark it instead. Press **⌘M** and write what should be done: on a
+selection it marks that passage, with nothing selected it marks the whole
+document. Then **Claude Code or Codex reads your marks, makes the edits, and
+removes them.** You review the diff.
 
 ```
 you     select the passage, ⌘M, "Rephrase this, too much jargon"
@@ -122,8 +124,8 @@ agent   rewrites the passage — and removes the marks to say it is done
 you     git diff             — and keep it, or ask again
 ```
 
-The mark is stored **in the document**, as a pair of HTML comments around the
-passage:
+The mark is stored **in the document**. Around a passage, as a pair of HTML
+comments:
 
 ```markdown
 <!--ai:a3f Rephrase this, too much jargon-->
@@ -131,15 +133,27 @@ The service exposes an idempotent endpoint that reconciles divergent states.
 <!--/ai:a3f-->
 ```
 
+And for a request about the document as a whole — a page to bring up to date, to
+shorten, to rewrite for another audience — a single marker at the top, below the
+frontmatter, with no passage to point at:
+
+```markdown
+<!--ai:file:b7k Rewrite this page for a non-technical audience-->
+```
+
+Wrapping the entire file would have said the same thing and read terribly: the
+whole page highlighted, a marker in front of its first heading. The JSON tells
+an agent which it is reading, with `"scope": "passage"` or `"scope": "file"`.
+
 HTML comments render as nothing, here and in every other markdown tool. Keeping
 them in the file rather than in a sidecar buys four things: the anchor never
 drifts (the text moves, its markers move with it), the instruction sits exactly
 where it applies, it survives a rename, and it shows up in a `git diff`.
 
 In the editor those markers fold away — you see the passage highlighted with the
-instruction as a pill, and a panel lists every mention in the tree, so "what is
-left to do in this documentation" is one click away. Click a pill to resolve a
-mention yourself. The instruction is free text, in whatever language you think
+instruction as a pill, a file mention as a pill of its own above the document,
+and a panel lists every mention in the tree, so "what is left to do in this
+documentation" is one click away. Click a pill to resolve a mention yourself. The instruction is free text, in whatever language you think
 in — `<!--ai:b7 Résume ça en deux phrases-->` works as well as the English above,
 and the agent is told to answer in the language of the *passage*.
 
@@ -155,6 +169,7 @@ md-browser-editor mentions ./docs --json
 {
   "file": "guide/page.md",
   "id": "a3f",
+  "scope": "passage",
   "prompt": "Rephrase this, too much jargon",
   "text": "The service exposes an idempotent endpoint…",
   "line": 14
@@ -164,7 +179,8 @@ md-browser-editor mentions ./docs --json
 The contract is three steps: **read** the mentions, **edit** the passage between
 the markers, **drop** the markers to say it is done — by deleting the two
 comments, or with `mentions ./docs --resolve a3f` (`--resolve-all` for every
-one). An unresolved marker is how an agent says "I did not do this one".
+one, `--scope file` to narrow it). An unresolved marker is how an agent says "I
+did not do this one".
 
 One command writes that contract where Claude Code and Codex read it:
 
@@ -252,8 +268,10 @@ serve     --port <n>   port to listen on (default 4830; incremented if busy)
 
 mentions  --json           machine-readable output
           --file <path>    only that file's mentions
+          --scope <s>      only "passage" mentions, or only "file" ones
           --resolve <id>   drop one mention's markers, keeping its text
-          --resolve-all    drop every mention's markers
+          --resolve-all    drop every mention's markers (of what is left after
+                           --file and --scope)
 
 init-agent --claude       only .claude/commands/mentions.md
            --codex        only the AGENTS.md section
@@ -301,7 +319,8 @@ trust and nothing more.
   actually has: scalars, quoted strings, inline `[a, b]` and block `- item`
   lists. A nested map is marked as such and edited as raw YAML.
 - **One mention cannot contain another.** Overlapping instructions are a
-  conversation, not an annotation.
+  conversation, not an annotation. A file mention is the exception that proves
+  it: it has no extent, so it cannot overlap anything.
 - **The server is a local process**, and it dies the way local processes do:
   Ctrl+C, a closed terminal, a laptop that slept. The page stays up, so the
   editor watches its own event stream and says so in a banner — with the command
@@ -318,9 +337,10 @@ Everything the CLI and the editor use is exported, and the mention functions are
 pure string → string:
 
 ```js
-import { parseMentions, insertMention, removeMention, collectMentions } from 'md-browser-editor';
+import { parseMentions, insertMention, insertFileMention, removeMention, collectMentions } from 'md-browser-editor';
 
 const { id, source } = insertMention(markdown, from, to, 'Résume cette partie');
+const whole = insertFileMention(markdown, 'Réécris cette page pour un débutant');
 const pending = await collectMentions('./docs');
 ```
 
