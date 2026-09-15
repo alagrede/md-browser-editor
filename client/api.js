@@ -41,7 +41,7 @@ export const api = {
             body: source,
         }),
     // The server picks the folder and the file name; `name` is only a hint.
-    uploadImage: (document, file) =>
+    uploadAsset: (document, file) =>
         request(`/api/asset?document=${encodeURIComponent(document)}&name=${encodeURIComponent(file.name ?? '')}`, {
             method: 'POST',
             headers: { 'Content-Type': file.type || 'application/octet-stream' },

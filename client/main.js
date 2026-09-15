@@ -23,7 +23,7 @@ import { docPath, documentFromUrl, followLink, linkTarget, urlForDocument } from
 import { editingKeymap, menuItems, showContextMenu } from './editing.js';
 import { api, RequestError } from './api.js';
 import { livePreview, livePreviewTheme } from './live-preview.js';
-import { pasteImages } from './paste-image.js';
+import { pasteAssets } from './paste-asset.js';
 import { editorTheme } from './theme.js';
 import { mentionsTheme, mentionsView } from './mentions-view.js';
 import { renderTree, revealFile, toggleDir } from './tree.js';
@@ -292,9 +292,9 @@ function mountEditor(source) {
                         return true;
                     },
                 }),
-                pasteImages({
+                pasteAssets({
                     document: () => state.current,
-                    upload: api.uploadImage,
+                    upload: api.uploadAsset,
                     onStatus: setStatus,
                 }),
                 codeHighlighting,

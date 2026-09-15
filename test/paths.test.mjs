@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
-import { markdownTarget, mimeFor, resolveInRoot } from '../src/paths.mjs';
+import { attachment, markdownTarget, mimeFor, resolveInRoot } from '../src/paths.mjs';
 
 const ROOT = path.resolve('/tmp/md-root');
 
@@ -45,4 +45,12 @@ test('the mime table is an allowlist, not a fallback', () => {
     assert.equal(mimeFor('/x/a.key'), null);
     assert.equal(mimeFor('/x/a.js'), null);
     assert.equal(mimeFor('/x/binary'), null);
+});
+
+test('only a file inside an assets/ folder is an attachment', () => {
+    assert.equal(attachment(ROOT, path.join(ROOT, 'assets/report.docx')), true);
+    assert.equal(attachment(ROOT, path.join(ROOT, 'guide/assets/deep/archive.zip')), true);
+    assert.equal(attachment(ROOT, path.join(ROOT, 'guide/report.docx')), false);
+    assert.equal(attachment(ROOT, path.join(ROOT, 'assets.key')), false, 'a file called assets is not a folder');
+    assert.equal(attachment(ROOT, path.join(ROOT, 'my-assets/server.key')), false);
 });

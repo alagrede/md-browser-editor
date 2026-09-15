@@ -73,6 +73,18 @@ export function markdownTarget(root, requested) {
     return target;
 }
 
+/**
+ * Whether a file of a type the allowlist does not cover may still be handed
+ * out, as a download: only inside a folder named assets/, which is where the
+ * editor puts what you paste and where documentation keeps its attachments.
+ * The allowlist stays the rule everywhere else — a repository's .key or
+ * config.js is not an attachment of anything.
+ */
+export function attachment(root, file) {
+    const directories = path.relative(root, path.dirname(file)).split(path.sep);
+    return directories.includes('assets');
+}
+
 /** The URL path a file is served at, always "/"-joined. */
 export function hrefFor(root, file) {
     return '/' + path.relative(root, file).split(path.sep).join('/');

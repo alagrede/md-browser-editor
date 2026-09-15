@@ -1,6 +1,7 @@
 // The API, over a real socket: what the browser can do, and what it cannot.
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import test, { after, before } from 'node:test';
@@ -218,7 +219,7 @@ test('a document URL serves the editor, so a refresh lands back on it', async ()
     assert.match(raw.source, /# Page/);
 });
 
-// --- pasting an image ---------------------------------------------------------
+// --- pasting a file ------------------------------------------------------------
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
 
@@ -240,18 +241,103 @@ test('a pasted image is written next to its document, with a reference relative 
     assert.equal(again.reference, 'assets/capture-d-ecran-2.png', 'never over an existing file');
 });
 
-test('a pasted image refuses what is not a raster image, and any destination but a document', async () => {
-    const svg = await call('/api/asset?document=guide/page.md&name=x.svg', {
+test('any other file is written too, and linked rather than shown', async () => {
+    const pdf = await (await call('/api/asset?document=guide/page.md&name=cerfa_12669-02.pdf', {
+        method: 'POST',
+        body: Buffer.from('%PDF-1.7\n%âãÏÓ\n'),
+    })).json();
+    assert.deepEqual([pdf.reference, pdf.kind], ['assets/cerfa_12669-02.pdf', 'file']);
+    assert.equal((await call('/guide/assets/cerfa_12669-02.pdf')).headers.get('content-type'), 'application/pdf');
+
+    const sheet = await (await call('/api/asset?document=guide/page.md&name=Budget%202026.xlsx', {
+        method: 'POST',
+        body: Buffer.from('PK\x03\x04 not really a spreadsheet'),
+    })).json();
+    assert.deepEqual([sheet.reference, sheet.kind], ['assets/budget-2026.xlsx', 'file']);
+    assert.equal(existsSync(path.join(root, 'guide/assets/budget-2026.xlsx')), true);
+
+    // Not on the allowlist, but an attachment: it downloads.
+    const download = await call(`/guide/${sheet.reference}`);
+    assert.equal(download.status, 200);
+    assert.equal(download.headers.get('content-type'), 'application/octet-stream');
+    assert.equal(download.headers.get('content-disposition'), "attachment; filename*=UTF-8''budget-2026.xlsx");
+    assert.match(await download.text(), /not really a spreadsheet/);
+});
+
+test('outside assets/, a type off the allowlist is still refused, and so is a rebinding download', async () => {
+    writeFileSync(path.join(root, 'guide/server.key'), 'PRIVATE');
+    assert.equal((await call('/guide/server.key')).status, 404);
+
+    mkdirSync(path.join(root, 'assets'), { recursive: true });
+    writeFileSync(path.join(root, 'assets/notes.docx'), 'docx');
+    assert.equal(await raw('/assets/notes.docx', { method: 'GET' }), 200);
+    assert.equal(await raw('/assets/notes.docx', { method: 'GET', headers: { Host: 'rebind.evil.example:4899' } }), 404);
+});
+
+test('a pasted file is written, but never served as a page of the editor', async () => {
+    const html = await (await call('/api/asset?document=guide/page.md&name=evil.html', {
+        method: 'POST',
+        body: '<script>fetch("/api/file?path=README.md", { method: "PUT", body: "pwned" })</script>',
+    })).json();
+    const page = await call(`/guide/${html.reference}`);
+    assert.equal(page.headers.get('content-type'), 'application/octet-stream', 'a download, never a page');
+    assert.match(page.headers.get('content-disposition'), /^attachment;/);
+    assert.equal(page.headers.get('x-content-type-options'), 'nosniff');
+
+    const svg = await (await call('/api/asset?document=guide/page.md&name=x.svg', {
         method: 'POST',
         body: '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
-    });
-    assert.equal(svg.status, 415);
+    })).json();
+    assert.equal(svg.kind, 'image');
+    const served = await call(`/guide/${svg.reference}`);
+    assert.equal(served.headers.get('content-security-policy'), 'sandbox', 'an SVG runs no script on this origin');
 
-    const disguised = await call('/api/asset?document=guide/page.md&name=shot.png', { method: 'POST', body: 'alert(1)' });
-    assert.equal(disguised.status, 415, 'the name is a hint, the bytes decide');
+    const disguised = await (await call('/api/asset?document=guide/page.md&name=shot.png', { method: 'POST', body: '<html>' })).json();
+    assert.equal((await call(`/guide/${disguised.reference}`)).headers.get('x-content-type-options'), 'nosniff');
+});
+
+test('a paste refuses an empty body, and any destination but a document', async () => {
+    const empty = await call('/api/asset?document=guide/page.md&name=folder', { method: 'POST', body: '' });
+    assert.equal(empty.status, 400);
 
     for (const document of ['../../etc/passwd', '.secrets/token.md', 'guide/assets/x.png', 'nowhere.md']) {
         const refused = await call(`/api/asset?document=${encodeURIComponent(document)}`, { method: 'POST', body: PNG });
         assert.ok([403, 404].includes(refused.status), `document=${document}`);
     }
+});
+
+// --- writes from another site ---------------------------------------------------
+
+/** A raw request, so Origin and Host can be what another site would send. */
+const raw = (route, { method = 'POST', headers = {}, body = '' } = {}) =>
+    new Promise((resolve, reject) => {
+        const target = new URL(route, server.url);
+        const request = http.request(
+            { host: target.hostname, port: target.port, path: target.pathname + target.search, method, headers },
+            response => {
+                response.resume();
+                response.on('end', () => resolve(response.statusCode));
+            }
+        );
+        request.on('error', reject);
+        request.end(body);
+    });
+
+test('a write from another site is refused, a write from the editor or a script is not', async () => {
+    const own = new URL(server.url).host;
+    const route = '/api/asset?document=guide/page.md&name=csrf.txt';
+
+    assert.equal(await raw(route, { headers: { Origin: 'https://evil.example' }, body: 'x' }), 403, 'another site');
+    assert.equal(await raw(route, { headers: { Origin: 'null' }, body: 'x' }), 403, 'a sandboxed page or a file://');
+    assert.equal(
+        await raw(route, { headers: { Host: 'rebind.evil.example:4899', Origin: 'http://rebind.evil.example:4899' }, body: 'x' }),
+        403,
+        'DNS rebinding: Origin and Host agree, but the name is not local'
+    );
+    assert.equal(await raw('/api/file?path=README.md', { method: 'PUT', headers: { Origin: 'https://evil.example' }, body: 'x' }), 403);
+    assert.match(readFileSync(path.join(root, 'README.md'), 'utf8'), /# Root/, 'nothing was written');
+
+    assert.equal(await raw(route, { headers: { Origin: `http://${own}` }, body: 'x' }), 201, 'the editor');
+    assert.equal(await raw(route, { body: 'x' }), 201, 'curl, a script: no Origin at all');
+    assert.equal(await raw(route, { headers: { Host: `localhost:${new URL(server.url).port}` }, body: 'x' }), 201);
 });

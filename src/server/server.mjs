@@ -4,17 +4,17 @@
 // Nothing is generated on disk and nothing is cached: files are read on every
 // request, so what the browser shows is what is on disk. Writes are confined
 // to .md files under the root (see markdownTarget) — the editor edits
-// documents — plus pasted images, which go through saveImage's own rules.
+// documents — plus pasted files, which go through saveAsset's own rules.
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CLAUDE_COMMAND_PATH, CODEX_AGENTS_PATH, installAgentFiles, SECTION_OPEN } from '../agentPrompt.mjs';
-import { saveImage } from '../assets.mjs';
+import { saveAsset } from '../assets.mjs';
 import { collectMentions } from '../collect.mjs';
 import { removeMention } from '../mentions.mjs';
-import { hrefFor, markdownTarget, mimeFor, resolveInRoot } from '../paths.mjs';
+import { attachment, hrefFor, markdownTarget, mimeFor, resolveInRoot } from '../paths.mjs';
 import { buildTree, rootIndex } from '../tree.mjs';
 import { renderShell } from './shell.mjs';
 import { watchTree } from './watch.mjs';
@@ -63,7 +63,44 @@ function readBytes(request, limit) {
 /** Request body as a string. */
 const readBody = async (request, limit = 8 * 1024 * 1024) => (await readBytes(request, limit)).toString('utf8');
 
-const IMAGE_LIMIT = 20 * 1024 * 1024;
+const ASSET_LIMIT = 50 * 1024 * 1024;
+
+/**
+ * Whether the request was addressed to this machine by a name that cannot be
+ * someone else's: a loopback name, an IP literal or a .local name. A public
+ * domain resolving to 127.0.0.1 is DNS rebinding — the attacker's page, on the
+ * attacker's origin, talking to this server as if it were its own.
+ */
+export function localHost(headers) {
+    let hostname;
+    try {
+        hostname = new URL(`http://${headers.host ?? ''}`).hostname;
+    } catch {
+        return false;
+    }
+    return (
+        hostname === 'localhost' ||
+        hostname.endsWith('.localhost') ||
+        hostname.endsWith('.local') ||
+        hostname.startsWith('[') ||
+        /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)
+    );
+}
+
+/**
+ * Whether a request that changes something comes from the editor itself.
+ *
+ * The server has no authentication, and every page open in the browser can
+ * send a POST to 127.0.0.1 — a form or a fetch with a text/plain body needs no
+ * preflight. So a browser request is taken only from this origin: browsers
+ * stamp Origin on every such request, and a page cannot forge it. A request
+ * with no Origin is not a browser (curl, a script) and has no one's session to
+ * ride on. Under DNS rebinding Origin and Host agree, both the attacker's —
+ * hence localHost.
+ */
+export function fromThisEditor(headers) {
+    return localHost(headers) && (headers.origin === undefined || headers.origin === `http://${headers.host}`);
+}
 
 /**
  * @param {{root: string, host?: string, port?: number, title?: string}} options
@@ -83,6 +120,10 @@ export async function startServer({ root, host = '127.0.0.1', port = 4830, title
     async function handle(request, response) {
         const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`);
         const route = url.pathname;
+
+        if (request.method !== 'GET' && request.method !== 'HEAD' && !fromThisEditor(request.headers)) {
+            return void json(response, 403, { error: 'Refused: this request does not come from the editor.' });
+        }
 
         // --- the shell -----------------------------------------------------
         if (route === '/' && request.method === 'GET') {
@@ -176,22 +217,23 @@ export async function startServer({ root, host = '127.0.0.1', port = 4830, title
             return;
         }
 
-        // An image pasted into a document. The only non-markdown write: the
-        // request names the DOCUMENT, never a destination — saveImage picks
-        // the folder and the name, and refuses bytes that are not an image.
+        // A file pasted into a document. The only non-markdown write: the
+        // request names the DOCUMENT, never a destination — saveAsset picks
+        // the folder and the name.
         if (route === '/api/asset' && request.method === 'POST') {
             const target = markdownTarget(root, url.searchParams.get('document') ?? '');
             if (!target) return void json(response, 403, { error: 'Refused: not a markdown file under the root.' });
             if (!existsSync(target)) return void json(response, 404, { error: 'No such file.' });
             let bytes;
             try {
-                bytes = await readBytes(request, IMAGE_LIMIT);
+                bytes = await readBytes(request, ASSET_LIMIT);
             } catch {
-                return void json(response, 413, { error: 'That image is over 20 MB.' });
+                return void json(response, 413, { error: 'That file is over 50 MB.' });
             }
-            const saved = await saveImage(root, target, bytes, url.searchParams.get('name'));
-            if (!saved) return void json(response, 415, { error: 'Only PNG, JPEG, GIF and WebP images can be pasted.' });
-            json(response, 201, { path: hrefFor(root, saved.file).slice(1), reference: saved.reference });
+            // What a folder copied in the Finder reads as.
+            if (!bytes.length) return void json(response, 400, { error: 'That file is empty — a folder cannot be pasted.' });
+            const saved = await saveAsset(root, target, bytes, url.searchParams.get('name'));
+            json(response, 201, { path: hrefFor(root, saved.file).slice(1), reference: saved.reference, kind: saved.kind });
             return;
         }
 
@@ -297,12 +339,34 @@ export async function startServer({ root, host = '127.0.0.1', port = 4830, title
                 return;
             }
             const mime = mimeFor(target);
-            // Refused rather than octet-streamed: see the allowlist's comment.
             if (!mime) {
-                text(response, 404, 'Not a servable file type.');
+                // A file in an assets/ folder is an attachment of the
+                // documents — a pasted .docx, a .zip — so it downloads.
+                // Anywhere else an unknown type is refused rather than
+                // octet-streamed: see the allowlist's comment.
+                if (!attachment(root, target) || !localHost(request.headers)) {
+                    text(response, 404, 'Not a servable file type.');
+                    return;
+                }
+                response.writeHead(200, {
+                    'Content-Type': 'application/octet-stream',
+                    'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(target))}`,
+                    'Cache-Control': 'no-cache',
+                    'X-Content-Type-Options': 'nosniff',
+                });
+                response.end(await readFile(target));
                 return;
             }
-            response.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-cache' });
+            response.writeHead(200, {
+                'Content-Type': mime,
+                'Cache-Control': 'no-cache',
+                // The declared type is the only one: a .png holding HTML stays an image.
+                'X-Content-Type-Options': 'nosniff',
+                // An SVG opened on its own is a document that runs its scripts,
+                // on the origin of an editor that writes files. The sandbox
+                // gives it no origin and no script; as an <img> nothing changes.
+                ...(mime.startsWith('image/svg') ? { 'Content-Security-Policy': 'sandbox' } : {}),
+            });
             response.end(await readFile(target));
             return;
         }
