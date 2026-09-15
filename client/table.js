@@ -1,7 +1,7 @@
 // Markdown tables, rendered as tables and editable in place — the Znote model.
 //
 // The source lines are replaced by a block widget. A cell shows its rendered
-// text; clicking one swaps it for an input holding the RAW markdown, and
+// text; clicking one swaps it for a textarea holding the RAW markdown, and
 // committing serializes the whole model back into the document. So the file
 // stays the only state: the widget never holds anything the markdown does not.
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
@@ -133,7 +133,8 @@ export function serializeTable(model) {
         return copy;
     };
     const cell = value => {
-        const text = String(value ?? '').trim();
+        // A row is one line: a line break inside a cell would end the table.
+        const text = String(value ?? '').replace(/\r?\n|\r/g, ' ').trim();
         // A cell may not hold a raw pipe: it would split the row in two.
         return (text.length ? text : ' ').replace(/\|/g, '\\|');
     };
@@ -152,16 +153,22 @@ const alignLabel = align =>
     align === 'left' ? '⭰' : align === 'center' ? '↔' : align === 'right' ? '⭲' : '⇥';
 
 /** Minimal inline rendering for a cell: enough to read, never enough to lose. */
-function cellHtml(raw) {
+export function cellHtml(raw) {
     const escaped = String(raw)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
-    return escaped
-        .replace(/`([^`]+)`/g, '<code>$1</code>')
-        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-        .replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
-        .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    return (
+        escaped
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+            .replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
+            .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+            // A <br> is a cell's only line break — except inside a code span,
+            // where it is literal text. The escaping left code spans free of
+            // "<", so [^<]* cannot run past one.
+            .replace(/(<code>[^<]*<\/code>)|&lt;br\s*\/?&gt;/gi, (match, code) => code ?? '<br>')
+    );
 }
 
 // --- widget -----------------------------------------------------------------
@@ -213,7 +220,7 @@ function renderTable(source, view, widget) {
         };
     };
     const raw = cell => {
-        const input = cell.querySelector('input');
+        const input = cell.querySelector('textarea');
         return (input ? input.value : cell.dataset.raw ?? '').trim();
     };
     const edit = fn => {
@@ -234,27 +241,56 @@ function renderTable(source, view, widget) {
         cell.innerHTML = text.trim() ? cellHtml(text) : '&nbsp;';
         cell.addEventListener('mousedown', event => {
             if (event.target.tagName === 'A') return; // let a link be a link
+            if (event.target.tagName === 'TEXTAREA') return; // place the caret, select text
             event.preventDefault();
             openEditor(cell);
         });
         return cell;
     };
 
-    /** Click to edit: the cell becomes an input holding its raw markdown. */
+    /**
+     * Click to edit: the cell becomes a textarea holding its raw markdown.
+     *
+     * A textarea rather than an input so a long cell wraps and can be read
+     * whole, the editor growing with its text. It still holds ONE line: a
+     * markdown row cannot span two, so Enter commits, Shift+Enter inserts a
+     * <br>, and a pasted line break becomes a space.
+     */
     function openEditor(cell) {
-        if (cell.querySelector('input')) return;
-        const input = document.createElement('input');
-        input.type = 'text';
+        if (cell.querySelector('textarea')) return;
+        // Freeze the column at its rendered width: a textarea contributes
+        // nothing to the table's auto layout, so the column would otherwise
+        // collapse the moment its text is swapped out.
+        cell.style.width = `${cell.getBoundingClientRect().width}px`;
+        const input = document.createElement('textarea');
+        input.rows = 1;
+        input.spellcheck = false;
         input.value = cell.dataset.raw ?? '';
         input.className = 'cm-md-table-input';
         cell.textContent = '';
         cell.appendChild(input);
+
+        const fit = () => {
+            input.style.height = 'auto';
+            input.style.height = `${input.scrollHeight}px`;
+            view.requestMeasure();
+        };
+        input.addEventListener('input', () => {
+            if (/[\r\n]/.test(input.value)) {
+                const caret = input.selectionStart;
+                input.value = input.value.replace(/\r?\n|\r/g, ' ');
+                input.setSelectionRange(caret, caret);
+            }
+            fit();
+        });
+        fit();
         input.focus();
         input.select();
 
         const close = ({ commitEdit = true, move = 0 } = {}) => {
             const value = input.value;
             cell.dataset.raw = value;
+            cell.style.width = '';
             cell.innerHTML = value.trim() ? cellHtml(value) : '&nbsp;';
             if (commitEdit) edit(next => assign(next, cell, value));
             if (move) focusNeighbour(cell, move);
@@ -262,7 +298,13 @@ function renderTable(source, view, widget) {
 
         input.addEventListener('blur', () => close());
         input.addEventListener('keydown', event => {
-            if (event.key === 'Enter') {
+            if (event.key === 'Enter' && event.shiftKey) {
+                // The one line break a cell can hold: inline HTML, which GFM
+                // renders and which keeps the row on a single line.
+                event.preventDefault();
+                input.setRangeText('<br>', input.selectionStart, input.selectionEnd, 'end');
+                fit();
+            } else if (event.key === 'Enter') {
                 event.preventDefault();
                 input.blur();
             } else if (event.key === 'Escape') {
@@ -438,13 +480,23 @@ export const tableTheme = EditorView.theme({
         textAlign: 'left',
         verticalAlign: 'top',
         position: 'relative',
+        // The editor's line wrapping breaks anywhere, which lets auto layout
+        // squeeze a short column down to "serv|e". Break only what overflows.
+        whiteSpace: 'normal',
+        wordBreak: 'normal',
+        overflowWrap: 'break-word',
     },
     '.cm-md-table th': { background: 'var(--code-bg)', fontWeight: '650' },
     '.cm-md-table td:hover, .cm-md-table th:hover': { background: 'var(--row-hover)', cursor: 'text' },
     '.cm-md-table code': { fontFamily: 'var(--mono)', fontSize: '0.9em', background: 'var(--code-bg)', borderRadius: '3px', padding: '0 0.25em' },
     '.cm-md-table a': { color: 'var(--accent)' },
     '.cm-md-table-input': {
+        display: 'block',
+        boxSizing: 'border-box',
         width: '100%',
+        resize: 'none',
+        overflow: 'hidden',
+        lineHeight: 'inherit',
         border: '0',
         outline: '2px solid var(--accent)',
         outlineOffset: '1px',

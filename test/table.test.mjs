@@ -2,7 +2,7 @@
 // work, and the only place a table can be silently corrupted.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { findTableRanges, parseTable, serializeTable } from '../client/table.js';
+import { cellHtml, findTableRanges, parseTable, serializeTable } from '../client/table.js';
 
 const TABLE = ['| Command | Does | Writes? |', '| --- | :--- | :---: |', '| `serve` | serves | no |'].join('\n');
 
@@ -46,6 +46,21 @@ test('a pipe typed in a cell is escaped instead of splitting the row', () => {
     assert.equal(model.rows[0][0], 'a | b', 'the model holds the logical text');
     assert.match(markdown, /a \\\| b/, 'the file holds it escaped');
     assert.equal(serializeTable(model), markdown, 'and the round trip is stable');
+});
+
+test('a line break in a cell becomes a space instead of ending the table', () => {
+    // The cell editor wraps long text, and a paste can carry a newline.
+    const markdown = serializeTable({ header: ['a', 'b'], aligns: [], rows: [['one\ntwo\r\nthree', 'x']] });
+    assert.equal(markdown.split('\n').length, 3);
+    assert.deepEqual(parseTable(markdown).rows, [['one two three', 'x']]);
+});
+
+test('a <br> in a cell renders as a line break, and nothing else of HTML does', () => {
+    assert.equal(cellHtml('one<br>two<br/>three<BR />four'), 'one<br>two<br>three<br>four');
+    assert.equal(cellHtml('`a<br>b` then<br>c'), '<code>a&lt;br&gt;b</code> then<br>c', 'literal in code');
+    assert.equal(cellHtml('<b>x</b>'), '&lt;b&gt;x&lt;/b&gt;');
+    const markdown = serializeTable({ header: ['a'], aligns: [], rows: [['one<br>two']] });
+    assert.deepEqual(parseTable(markdown).rows, [['one<br>two']], 'and it survives the round trip');
 });
 
 test('a table with no rows still round-trips', () => {
