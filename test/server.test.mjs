@@ -217,3 +217,41 @@ test('a document URL serves the editor, so a refresh lands back on it', async ()
     const raw = await (await call('/api/file?path=guide/page.md')).json();
     assert.match(raw.source, /# Page/);
 });
+
+// --- pasting an image ---------------------------------------------------------
+
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+
+test('a pasted image is written next to its document, with a reference relative to it', async () => {
+    const response = await call('/api/asset?document=guide/page.md&name=Capture%20d%E2%80%99%C3%A9cran.png', {
+        method: 'POST',
+        body: PNG,
+    });
+    assert.equal(response.status, 201);
+    const payload = await response.json();
+    assert.equal(payload.reference, 'assets/capture-d-ecran.png');
+    assert.equal(payload.path, 'guide/assets/capture-d-ecran.png');
+    assert.deepEqual(readFileSync(path.join(root, 'guide/assets/capture-d-ecran.png')), PNG);
+
+    const again = await (await call('/api/asset?document=guide/page.md&name=Capture%20d%E2%80%99%C3%A9cran.png', {
+        method: 'POST',
+        body: PNG,
+    })).json();
+    assert.equal(again.reference, 'assets/capture-d-ecran-2.png', 'never over an existing file');
+});
+
+test('a pasted image refuses what is not a raster image, and any destination but a document', async () => {
+    const svg = await call('/api/asset?document=guide/page.md&name=x.svg', {
+        method: 'POST',
+        body: '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+    });
+    assert.equal(svg.status, 415);
+
+    const disguised = await call('/api/asset?document=guide/page.md&name=shot.png', { method: 'POST', body: 'alert(1)' });
+    assert.equal(disguised.status, 415, 'the name is a hint, the bytes decide');
+
+    for (const document of ['../../etc/passwd', '.secrets/token.md', 'guide/assets/x.png', 'nowhere.md']) {
+        const refused = await call(`/api/asset?document=${encodeURIComponent(document)}`, { method: 'POST', body: PNG });
+        assert.ok([403, 404].includes(refused.status), `document=${document}`);
+    }
+});

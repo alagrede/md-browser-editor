@@ -40,6 +40,13 @@ export const api = {
             headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
             body: source,
         }),
+    // The server picks the folder and the file name; `name` is only a hint.
+    uploadImage: (document, file) =>
+        request(`/api/asset?document=${encodeURIComponent(document)}&name=${encodeURIComponent(file.name ?? '')}`, {
+            method: 'POST',
+            headers: { 'Content-Type': file.type || 'application/octet-stream' },
+            body: file,
+        }),
     agentStatus: () => request('/api/agent-status'),
     initAgent: options =>
         request('/api/init-agent', {

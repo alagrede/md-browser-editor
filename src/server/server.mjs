@@ -4,13 +4,14 @@
 // Nothing is generated on disk and nothing is cached: files are read on every
 // request, so what the browser shows is what is on disk. Writes are confined
 // to .md files under the root (see markdownTarget) — the editor edits
-// documents, nothing else.
+// documents — plus pasted images, which go through saveImage's own rules.
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CLAUDE_COMMAND_PATH, CODEX_AGENTS_PATH, installAgentFiles, SECTION_OPEN } from '../agentPrompt.mjs';
+import { saveImage } from '../assets.mjs';
 import { collectMentions } from '../collect.mjs';
 import { removeMention } from '../mentions.mjs';
 import { hrefFor, markdownTarget, mimeFor, resolveInRoot } from '../paths.mjs';
@@ -40,8 +41,8 @@ function text(response, status, body) {
     response.end(body);
 }
 
-/** Request body as a string, with a ceiling so a stuck client cannot grow it forever. */
-function readBody(request, limit = 8 * 1024 * 1024) {
+/** Request body as bytes, with a ceiling so a stuck client cannot grow it forever. */
+function readBytes(request, limit) {
     return new Promise((resolve, reject) => {
         let size = 0;
         const chunks = [];
@@ -54,10 +55,15 @@ function readBody(request, limit = 8 * 1024 * 1024) {
             }
             chunks.push(chunk);
         });
-        request.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+        request.on('end', () => resolve(Buffer.concat(chunks)));
         request.on('error', reject);
     });
 }
+
+/** Request body as a string. */
+const readBody = async (request, limit = 8 * 1024 * 1024) => (await readBytes(request, limit)).toString('utf8');
+
+const IMAGE_LIMIT = 20 * 1024 * 1024;
 
 /**
  * @param {{root: string, host?: string, port?: number, title?: string}} options
@@ -167,6 +173,25 @@ export async function startServer({ root, host = '127.0.0.1', port = 4830, title
             }
 
             json(response, 405, { error: 'Method not allowed.' });
+            return;
+        }
+
+        // An image pasted into a document. The only non-markdown write: the
+        // request names the DOCUMENT, never a destination — saveImage picks
+        // the folder and the name, and refuses bytes that are not an image.
+        if (route === '/api/asset' && request.method === 'POST') {
+            const target = markdownTarget(root, url.searchParams.get('document') ?? '');
+            if (!target) return void json(response, 403, { error: 'Refused: not a markdown file under the root.' });
+            if (!existsSync(target)) return void json(response, 404, { error: 'No such file.' });
+            let bytes;
+            try {
+                bytes = await readBytes(request, IMAGE_LIMIT);
+            } catch {
+                return void json(response, 413, { error: 'That image is over 20 MB.' });
+            }
+            const saved = await saveImage(root, target, bytes, url.searchParams.get('name'));
+            if (!saved) return void json(response, 415, { error: 'Only PNG, JPEG, GIF and WebP images can be pasted.' });
+            json(response, 201, { path: hrefFor(root, saved.file).slice(1), reference: saved.reference });
             return;
         }
 

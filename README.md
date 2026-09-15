@@ -42,7 +42,7 @@ the same place is the point.
 | New file | ＋ in the sidebar, path relative to the served directory |
 | Format | ⌘B, ⌘I, ⌘E (code), ⌘⇧X (strikethrough), ⌘K (link) |
 | Turn into | ⌘1 ⌘2 ⌘3 (headings), ⌘⇧8 ⌘⇧7 ⌘⇧9 (bullet, numbered, task), ⌘⇧' (quote) |
-| Insert | right-click → image, table, code block, divider |
+| Insert | right-click → image, table, code block, divider — or paste an image |
 | Mention | select a passage, ⌘M — or ⌘M with nothing selected, for the whole file |
 | Everything at once | right-click anywhere in the text |
 
@@ -54,9 +54,17 @@ where you clicked first, so the command lands where you are looking.
 ![The right-click menu: format, turn into, insert](https://raw.githubusercontent.com/alagrede/md-browser-editor/main/docs/screenshots/context-menu.png)
 
 **Tables render as tables, and are edited as tables.** Click a cell to edit it
-(the input holds the raw markdown of that cell), Tab for the next one, ＋ to add
+(the editor holds the raw markdown of that cell, and wraps; ⇧Enter inserts a
+`<br>`), Tab for the next one, ＋ to add
 a row or a column; the header cell carries a ✕ to drop its column and a button
 to cycle its alignment. Every edit is serialized straight back into the file.
+
+**Pasting an image saves it.** A screenshot or a copied image is written to the
+nearest `assets/` folder — the document's own, or one in a folder above it, up
+to the served root; a new `assets/` next to the document when there is none —
+and `![](assets/image-20260915-091507.png)` goes where the caret is. A
+clipboard that also holds text (cells copied from a spreadsheet carry a picture
+of themselves) pastes the text.
 
 **Frontmatter is a Properties panel, not a heading.** A markdown parser reads
 `title: Guide` followed by `---` as a *setext heading*, so an unhandled
@@ -289,7 +297,10 @@ The server binds `127.0.0.1`, and these rules are why it is comfortable to run
 over a directory you care about:
 
 - **Writes are markdown only** — no dropping a `.js`, an `.html` or a
-  `.command` next to your documents.
+  `.command` next to your documents. The one exception is a pasted image: PNG,
+  JPEG, GIF or WebP recognised by its bytes (never SVG, which can carry
+  script), under a name the server picks, in an `assets/` folder, never over
+  an existing file.
 - **Reads are an allowlist** — images, PDF, JSON, txt and csv; an unknown
   extension is a 404, never a download of whatever it happens to be.
 - **Dotted segments are refused** on every path, so `.env`, `.git/` and `.ssh/`
