@@ -1,6 +1,6 @@
 {
     "name": "md-browser-editor",
-    "version": "0.2.1",
+    "version": "0.3.0",
     "description": "Browse a markdown tree in your browser, edit it in a live-preview editor, and leave mentions for an AI agent to act on.",
     "keywords": [
         "markdown",
